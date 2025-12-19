@@ -36,10 +36,9 @@ def save_forecast_to_db(project_name, forecast_df):
         except Exception as e:
             st.sidebar.error(f"DB Write Failed: {e}")
 
-# --- 1. ANALYTICS ENGINE (ENHANCED) ---
+# --- 1. ANALYTICS ENGINE (RETURNS MODEL + FORECAST) ---
 @st.cache_resource
 def run_forecast_model(df, periods, freq):
-    # We return the model object as well to extract seasonality
     model = Prophet(yearly_seasonality=True, weekly_seasonality=True, daily_seasonality=False)
     model.fit(df)
     future = model.make_future_dataframe(periods=periods, freq=freq)
@@ -93,7 +92,7 @@ with st.sidebar:
     
     st.divider()
     st.header("2. Analysis Tuning")
-    ma_window = st.slider("Smoothing Intensity (Days):", min_value=2, max_value=60, value=7)
+    ma_window = st.slider("Smoothing Window (Days):", min_value=2, max_value=90, value=7)
     
     if st.button("🔄 Reset System"):
         for key in st.session_state.keys(): del st.session_state[key]
@@ -141,11 +140,10 @@ if df_input is not None:
                 working_df['ds'] = pd.date_range(end=fixed_today, periods=len(working_df), freq=freq_map[freq_label])
             
             # --- MANDATORY CLEANING & CALCULATION ---
-            working_df = working_df.dropna(subset=['ds', 'y'])
-            working_df = working_df.sort_values('ds') 
+            working_df = working_df.dropna(subset=['ds', 'y']).sort_values('ds') 
             working_df = working_df.groupby('ds')['y'].sum().reset_index()
             
-            # Smoothing Logic (Moving Average)
+            # Add Moving Average for Smoothing
             working_df['ma'] = working_df['y'].rolling(window=ma_window, min_periods=1).mean()
 
             with st.spinner("AI Analysis in Progress..."):
@@ -176,7 +174,7 @@ if df_input is not None:
         m3.metric("Projected Total", f"{curr_sym}{projected_sum:,.2f}")
 
         st.write("### 📊 Business Intelligence Perspectives")
-        view = st.radio("Switch View:", ["AI Strategic Forecast", "Anomaly Detector", "Model Performance", "Weekly Patterns", "Annual Growth"], horizontal=True)
+        view = st.radio("Switch View:", ["AI Strategic Forecast", "Anomaly Detector", "Model Performance", "Monthly History", "Weekly Patterns", "Annual Growth"], horizontal=True)
         fig = go.Figure()
 
         if view == "AI Strategic Forecast":
@@ -188,19 +186,30 @@ if df_input is not None:
         elif view == "Anomaly Detector":
             perf = fcst.set_index('ds')[['yhat', 'yhat_lower', 'yhat_upper']].join(hist.set_index('ds'))
             anoms = perf[(perf['y'] > perf['yhat_upper']) | (perf['y'] < perf['yhat_lower'])]
+            
+            # THE COOL METRIC CARDS YOU REQUESTED:
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Anomalies Found", len(anoms))
+            c2.metric("Highest Spike", f"{curr_sym}{anoms['y'].max():,.0f}" if not anoms.empty else "0")
+            c3.metric("Deepest Dip", f"{curr_sym}{anoms['y'].min():,.0f}" if not anoms.empty else "0")
+            
             fig.add_trace(go.Scatter(x=perf.index, y=perf['y'], mode='lines', name='Actual Performance', line=dict(color='#FFFFFF', width=1)))
             fig.add_trace(go.Scatter(x=anoms.index, y=anoms['y'], mode='markers', name='Anomaly', marker=dict(color='#FF4B4B', size=10)))
-            if not anoms.empty:
-                st.dataframe(anoms[['y']].rename(columns={'y': 'Irregular Amount'}).style.format(lambda x: f"{curr_sym}{x:,.2f}"), use_container_width=True)
+            st.dataframe(anoms[['y']].rename(columns={'y': 'Irregular Amount'}).style.format(lambda x: f"{curr_sym}{x:,.2f}"), use_container_width=True)
 
         elif view == "Model Performance":
-            st.info(f"💡 **Smoothing View:** Actual (faded) vs. {ma_window}-Day Avg (Teal) vs. AI Fit (Orange).")
+            st.info(f"💡 Comparing Raw Data vs. {ma_window}-Day Smoothing vs. AI Fit.")
             fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], mode='lines', name='Raw Data', line=dict(color='rgba(255,255,255,0.1)', width=1)))
             fig.add_trace(go.Scatter(x=hist['ds'], y=hist['ma'], mode='lines', name='Moving Average', line=dict(color='#00FFCC', width=3)))
             fig.add_trace(go.Scatter(x=fcst['ds'][:len(hist)], y=fcst['yhat'][:len(hist)], mode='lines', line=dict(dash='dash', color='orange'), name='AI Fit'))
 
+        elif view == "Monthly History":
+            # HISTORICAL PERFORMANCE BAR CHART:
+            monthly = hist.set_index('ds').resample('MS')['y'].sum().reset_index()
+            fig.add_trace(go.Bar(x=monthly['ds'], y=monthly['y'], marker_color="#636EFA", text=[f"{curr_sym}{x:,.0f}" for x in monthly['y']], textposition="outside", name="Monthly Total"))
+
         elif view == "Weekly Patterns":
-            st.info("💡 **Day-of-Week Influence:** Which days typically drive the most volume?")
+            st.info("💡 Day-of-Week Influence on Sales Volume.")
             days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
             sample_week = pd.DataFrame({'ds': pd.date_range('2024-01-01', periods=7)}) 
             weekly_comp = model.predict(sample_week)[['ds', 'weekly']]
@@ -213,7 +222,7 @@ if df_input is not None:
         fig.update_layout(template="plotly_dark", height=600, hovermode="x unified")
         st.plotly_chart(fig, use_container_width=True)
 
-        # --- 7. EXPORT ---
+        # --- 7. EXPORT & INSIGHTS ---
         st.subheader("📥 Export Reports")
         ex1, ex2 = st.columns(2)
         with ex1:
@@ -227,7 +236,7 @@ if df_input is not None:
         st.subheader("💡 Strategic Insights for Management")
         with st.expander("How to interpret this data", expanded=True):
             st.write(f"""
-            * **Model Logic:** Uses an Additive Prophet Model to separate trend from seasonality.
+            * **Model Logic:** Uses an Additive Prophet Model to decompose business data.
             * **Trajectory:** AI identifies a **{status}** trajectory toward **{curr_sym}{end_val:,.2f}**.
             * **Financial Horizon:** Total expected volume for {horizon} {freq_label.lower()} is **{curr_sym}{projected_sum:,.2f}**.
             """)
