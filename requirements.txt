@@ -1,0 +1,14 @@
+# CORE UI & Data
+streamlit
+pandas
+plotly
+
+# Analytics & Forecasting Engine
+prophet
+
+# Database & Export
+supabase
+fpdf
+
+# System Utilities
+python-dotenv
