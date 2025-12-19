@@ -15,7 +15,7 @@ def init_connection():
             key = st.secrets["SUPABASE_KEY"]
             return create_client(url, key)
         else:
-            st.warning("📡 Database connection: Offline (Credentials not found in Secrets)")
+            st.warning("📡 Database connection: Offline (Credentials missing)")
             return None
     except Exception as e:
         st.error(f"⚠️ Database Connection Failed: {e}")
@@ -39,6 +39,7 @@ def save_forecast_to_db(project_name, forecast_df):
 # --- 1. ANALYTICS ENGINE ---
 @st.cache_resource
 def run_forecast_model(df, periods, freq):
+    # Prophet uses an Additive Model: y(t) = trend + seasonality + holidays
     model = Prophet(yearly_seasonality=True, weekly_seasonality=True, daily_seasonality=False)
     model.fit(df)
     future = model.make_future_dataframe(periods=periods, freq=freq)
@@ -137,7 +138,7 @@ if df_input is not None:
                 working_df['ds'] = pd.date_range(end=fixed_today, periods=len(working_df), freq=freq_map[freq_label])
             
             working_df = working_df.dropna(subset=['ds', 'y'])
-            with st.spinner("Calculating Business Projections..."):
+            with st.spinner("AI Analysis in Progress..."):
                 st.session_state['forecast'] = run_forecast_model(working_df, horizon, freq_map[freq_label])
                 st.session_state['history'] = working_df
                 st.session_state['analyzed'] = True
@@ -159,37 +160,36 @@ if df_input is not None:
         m1, m2, m3 = st.columns(3)
         m1.metric("Lifetime Amount", f"{curr_sym}{hist['y'].sum():,.2f}")
         m2.metric(f"Avg per {freq_label}", f"{curr_sym}{hist['y'].mean():,.2f}")
-        m3.metric("Projected Amount (Horizon)", f"{curr_sym}{projected_sum:,.2f}")
+        m3.metric("Projected Total", f"{curr_sym}{projected_sum:,.2f}")
 
         st.write("### 📊 Business Intelligence Perspectives")
-        view = st.radio("Switch View:", ["AI Strategic Forecast", "Anomaly Detector", "Monthly History", "Annual Growth"], horizontal=True)
+        view = st.radio("Switch View:", ["AI Strategic Forecast", "Anomaly Detector", "Model Performance", "Monthly History", "Annual Growth"], horizontal=True)
         fig = go.Figure()
 
         if view == "AI Strategic Forecast":
             fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat_upper'], mode='lines', line=dict(width=0), showlegend=False))
-            fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat_lower'], mode='lines', line=dict(width=0), fill='toself', fillcolor='rgba(0,176,246,0.1)', name="Range of Probability"))
-            
+            fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat_lower'], mode='lines', line=dict(width=0), fill='toself', fillcolor='rgba(0,176,246,0.1)', name="Probability Range"))
             show_labels = "lines+markers+text" if horizon <= 24 else "lines+markers"
             fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat'], mode=show_labels, line=dict(color='#00B0F6', width=4), text=[f"{curr_sym}{x:,.0f}" for x in future_only['yhat']], textposition="top center", name="AI Prediction"))
-            fig.update_layout(title=f"{horizon}-Period Future Roadmap")
-        
+
         elif view == "Anomaly Detector":
             perf = fcst.set_index('ds')[['yhat', 'yhat_lower', 'yhat_upper']].join(hist.set_index('ds'))
             anoms = perf[(perf['y'] > perf['yhat_upper']) | (perf['y'] < perf['yhat_lower'])]
-            
-            fig.add_trace(go.Scatter(x=perf.index, y=perf['yhat_upper'], mode='lines', line=dict(width=0), showlegend=False))
-            fig.add_trace(go.Scatter(x=perf.index, y=perf['yhat_lower'], mode='lines', line=dict(width=0), fill='toself', fillcolor='rgba(200,200,200,0.1)', name="Expected Range"))
             fig.add_trace(go.Scatter(x=perf.index, y=perf['y'], mode='lines', name='Actual Performance', line=dict(color='#FFFFFF', width=1)))
-            fig.add_trace(go.Scatter(x=anoms.index, y=anoms['y'], mode='markers', name='Significant Deviation', marker=dict(color='#FF4B4B', size=10, line=dict(color='white', width=1))))
-
+            fig.add_trace(go.Scatter(x=anoms.index, y=anoms['y'], mode='markers', name='Anomaly', marker=dict(color='#FF4B4B', size=10)))
+            
             if not anoms.empty:
                 c1, c2, c3 = st.columns(3)
                 c1.metric("Anomalies Found", len(anoms))
                 c2.metric("Highest Spike", f"{curr_sym}{anoms['y'].max():,.0f}")
                 c3.metric("Deepest Dip", f"{curr_sym}{anoms['y'].min():,.0f}")
-                st.dataframe(anoms[['y']].rename(columns={'y': 'Irregular Amount'}).style.format(f"{curr_sym}{{:, .2f}}"), use_container_width=True)
-            else:
-                st.success("No significant business anomalies detected.")
+                # FIX: Using Lambda for safe dataframe formatting
+                st.dataframe(anoms[['y']].rename(columns={'y': 'Irregular Amount'}).style.format(lambda x: f"{curr_sym}{x:,.2f}"), use_container_width=True)
+
+        elif view == "Model Performance":
+            st.info("💡 **Backtesting View:** Compares historical actuals against AI fitting to verify model reliability.")
+            fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], mode='lines', name='Actual Data', line=dict(color='white')))
+            fig.add_trace(go.Scatter(x=fcst['ds'][:len(hist)], y=fcst['yhat'][:len(hist)], mode='lines', line=dict(dash='dash', color='orange'), name='AI Fit'))
 
         elif view == "Monthly History":
             monthly = hist.set_index('ds').resample('MS')['y'].sum().reset_index()
@@ -199,7 +199,7 @@ if df_input is not None:
             yearly = hist.set_index('ds').resample('YS')['y'].sum().reset_index()
             fig.add_trace(go.Scatter(x=yearly['ds'], y=yearly['y'], mode='lines+markers+text', line=dict(color="#EF553B", width=4), text=[f"{curr_sym}{x:,.0f}" for x in yearly['y']], textposition="top center", name="Annual Performance"))
 
-        fig.update_layout(template="plotly_dark", height=600, hovermode="x unified", yaxis_title=f"Currency ({curr_sym})")
+        fig.update_layout(template="plotly_dark", height=600, hovermode="x unified")
         st.plotly_chart(fig, use_container_width=True)
 
         # --- 7. EXPORT & STRATEGIC INSIGHTS ---
@@ -207,7 +207,7 @@ if df_input is not None:
         ex1, ex2 = st.columns(2)
         with ex1:
             csv = fcst.to_csv(index=False).encode('utf-8')
-            st.download_button(label="Download CSV Data", data=csv, file_name=f'{project_name}_data.csv', mime='text/csv')
+            st.download_button(label="Download CSV Data", data=csv, file_name=f'{project_name}_forecast.csv', mime='text/csv')
         with ex2:
             pdf_bytes = create_pdf_report(hist['y'].sum(), hist['y'].mean(), projected_sum, status, growth_pct, freq_label, curr_sym, selected_currency_name)
             st.download_button(label="Download PDF Summary", data=pdf_bytes, file_name=f'{project_name}_summary.pdf', mime='application/pdf')
@@ -216,10 +216,9 @@ if df_input is not None:
         st.subheader("💡 Strategic Insights for Management")
         with st.expander("How to interpret this data", expanded=True):
             st.write(f"""
-            * **Visual Coverage:** Full **{horizon} {freq_label.lower()}** business horizon.
-            * **Anomaly Detection:** Red markers highlight significant statistical deviations.
-            * **Prediction Logic:** The AI projects a **{status}** trend toward **{curr_sym}{end_val:,.2f}**.
-            * **Total Projected Volume:** Total expected amount is **{curr_sym}{projected_sum:,.2f}**.
+            * **Model Logic:** This forecast uses an **Additive Prophet Model**, decomposing your business data into trend and seasonal components.
+            * **Trajectory:** The AI identifies a **{status}** trajectory toward **{curr_sym}{end_val:,.2f}**.
+            * **Financial Horizon:** The total expected volume for the next {horizon} {freq_label.lower()} is **{curr_sym}{projected_sum:,.2f}**.
             """)
 else:
     st.info("💡 Please upload data and click 'Execute Analysis' to generate reports.")
