@@ -56,15 +56,18 @@ def run_forecast_model(df, periods, freq):
 # --- 2. PDF REPORT GENERATOR ---
 def create_pdf_report(hist_total, avg_val, proj_total, status, growth_pct, freq_label):
     """
-    Generates a professional PDF executive summary.
+    Constructs a PDF summary of the forecast results for executive stakeholders.
+    Handles the conversion of document text into a downloadable byte stream.
     """
     pdf = FPDF()
     pdf.add_page()
+    
+    # Report Header
     pdf.set_font("Arial", 'B', 16)
     pdf.cell(200, 10, txt="Executive Forecast Summary", ln=True, align='C')
     pdf.ln(10)
     
-    # KPIs Section
+    # Financial KPIs
     pdf.set_font("Arial", 'B', 12)
     pdf.cell(200, 10, txt="Key Performance Indicators:", ln=True)
     pdf.set_font("Arial", '', 11)
@@ -73,15 +76,17 @@ def create_pdf_report(hist_total, avg_val, proj_total, status, growth_pct, freq_
     pdf.cell(200, 8, txt=f"- Total Projected Amount (Horizon): ${proj_total:,.2f}", ln=True)
     pdf.ln(5)
 
-    # Strategy Section
+    # Strategic Analysis
     pdf.set_font("Arial", 'B', 12)
     pdf.cell(200, 10, txt="Strategic AI Insights:", ln=True)
     pdf.set_font("Arial", '', 11)
-    insight_text = (f"The AI model predicts a market {status} of approximately {abs(growth_pct):.1f}% "
-                    f"over the next horizon. This projection includes an automated scan for historical anomalies.")
+    insight_text = (f"The model identifies a market {status} of approximately {abs(growth_pct):.1f}% "
+                    f"over the forecasted horizon. This includes adjustments for historical anomalies.")
     pdf.multi_cell(0, 8, txt=insight_text)
     
-    return bytes(pdf.output())
+    # Technical fix for Python 3: 
+    # Output to a string buffer 'S' and encode to latin-1 for Streamlit compatibility
+    return pdf.output(dest='S').encode('latin-1')
 
 # --- 3. UI INITIALIZATION ---
 st.set_page_config(page_title="Enterprise Forecasting", layout="wide")
@@ -204,22 +209,50 @@ if df_input is not None:
         fig.update_layout(template="plotly_dark", height=600, hovermode="x unified", xaxis=dict(autorange=True, nticks=20))
         st.plotly_chart(fig, use_container_width=True)
 
-        # --- 7. EXPORT & PLAIN ENGLISH INSIGHTS ---
-        st.subheader("📥 Export Reports")
-        ex1, ex2 = st.columns(2)
-        with ex1:
-            csv = fcst.to_csv(index=False).encode('utf-8')
-            st.download_button("Download CSV Data", data=csv, file_name='forecast_data.csv', mime='text/csv')
-        with ex2:
-            pdf_bytes = create_pdf_report(hist['y'].sum(), hist['y'].mean(), projected_sum, status, growth_pct, freq_label)
-            st.download_button("Download PDF Summary", data=pdf_bytes, file_name='executive_report.pdf', mime='application/pdf')
+# --- 7. EXPORT & PLAIN ENGLISH INSIGHTS ---
+st.subheader("📥 Export Reports")
+ex1, ex2 = st.columns(2)
 
-        st.divider()
-        st.subheader("💡 Strategic Insights for Management")
-        with st.expander("How to interpret this data", expanded=True):
-            st.write(f"""
-            * **Visual Coverage:** This chart displays the full **{horizon} {freq_label.lower()}** horizon.
-            * **Anomaly Detection:** Red markers highlight points that significantly deviated from the expected statistical range.
-            * **Prediction Logic:** The AI expects a **{status}** toward **${end_val:,.2f}**.
-            * **Total Projected Amount:** The cumulative sum of the future points is **${projected_sum:,.2f}**.
-            """)
+with ex1:
+    # Prepare CSV for raw data analysis
+    csv = fcst.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="Download CSV Data", 
+        data=csv, 
+        file_name='forecast_data.csv', 
+        mime='text/csv',
+        help="Download raw forecast coordinates for further analysis in Excel/SQL."
+    )
+
+with ex2:
+    # Generate the byte stream for the PDF report
+    pdf_bytes = create_pdf_report(
+        hist['y'].sum(), 
+        hist['y'].mean(), 
+        projected_sum, 
+        status, 
+        growth_pct, 
+        freq_label
+    )
+    # Serve the PDF as a downloadable binary file
+    st.download_button(
+        label="Download PDF Summary", 
+        data=pdf_bytes, 
+        file_name='executive_report.pdf', 
+        mime='application/pdf',
+        help="Export a high-level executive summary for management stakeholders."
+    )
+
+st.divider()
+
+# --- STRATEGIC INTERPRETATION ---
+st.subheader("💡 Strategic Insights for Management")
+
+# Expander provides context without cluttering the main UI
+with st.expander("How to interpret this data", expanded=True):
+    st.write(f"""
+    * **Visual Coverage:** This chart displays the full **{horizon} {freq_label.lower()}** projection horizon.
+    * **Anomaly Detection:** Red markers (if present) highlight historical data points that significantly deviated from the expected statistical range.
+    * **Prediction Logic:** The model identifies a **{status}** trajectory toward a terminal value of **${end_val:,.2f}**.
+    * **Total Projected Amount:** The cumulative financial expectation for this horizon is **${projected_sum:,.2f}**.
+    """)
