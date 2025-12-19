@@ -54,7 +54,7 @@ def run_forecast_model(df, periods, freq):
     return forecast
 
 # --- 2. PDF REPORT GENERATOR ---
-def create_pdf_report(hist_total, avg_val, proj_total, status, growth_pct, freq_label):
+def create_pdf_report(hist_total, avg_val, proj_total, status, growth_pct, freq_label, curr_sym):
     """
     Constructs a PDF summary of the forecast results for executive stakeholders.
     Handles the conversion of document text into a downloadable byte stream.
@@ -67,13 +67,13 @@ def create_pdf_report(hist_total, avg_val, proj_total, status, growth_pct, freq_
     pdf.cell(200, 10, txt="Executive Forecast Summary", ln=True, align='C')
     pdf.ln(10)
     
-    # Financial KPIs
+    # Financial KPIs - Now localized with curr_sym
     pdf.set_font("Arial", 'B', 12)
     pdf.cell(200, 10, txt="Key Performance Indicators:", ln=True)
     pdf.set_font("Arial", '', 11)
-    pdf.cell(200, 8, txt=f"- Lifetime Historical Amount: ${hist_total:,.2f}", ln=True)
-    pdf.cell(200, 8, txt=f"- Average Amount per {freq_label}: ${avg_val:,.2f}", ln=True)
-    pdf.cell(200, 8, txt=f"- Total Projected Amount (Horizon): ${proj_total:,.2f}", ln=True)
+    pdf.cell(200, 8, txt=f"- Lifetime Historical Amount: {curr_sym}{hist_total:,.2f}", ln=True)
+    pdf.cell(200, 8, txt=f"- Average Amount per {freq_label}: {curr_sym}{avg_val:,.2f}", ln=True)
+    pdf.cell(200, 8, txt=f"- Total Projected Amount (Horizon): {curr_sym}{proj_total:,.2f}", ln=True)
     pdf.ln(5)
 
     # Strategic Analysis
@@ -88,18 +88,55 @@ def create_pdf_report(hist_total, avg_val, proj_total, status, growth_pct, freq_
     # Output to a string buffer 'S' and encode to latin-1 for Streamlit compatibility
     return pdf.output(dest='S').encode('latin-1')
 
+
 # --- 3. UI INITIALIZATION ---
-st.set_page_config(page_title="Enterprise Forecasting", layout="wide")
+st.set_page_config(page_title="Zenith Ecommerce: Enterprise Forecasting", layout="wide")
 st.title("📈 Strategic Enterprise Forecasting")
+
+# Define a broad range of global and regional currencies
+currency_lookup = {
+    "USD ($)": "$", "NGN (₦)": "₦", "EUR (€)": "€", "GBP (£)": "£",
+    "GHS (GH₵)": "GH₵", "ZAR (R)": "R", "KES (KSh)": "KSh", "CAD ($)": "$",
+    "AUD ($)": "$", "JPY (¥)": "¥", "INR (₹)": "₹", "CNY (¥)": "¥",
+    "AED (د.إ)": "DH ", "SAR (﷼)": "SR "
+}
 
 with st.sidebar:
     st.header("1. Administration")
+    
+    # Currency Selector (Placed high for global context)
+    selected_currency_name = st.selectbox(
+        "Reporting Currency:", 
+        options=list(currency_lookup.keys()),
+        index=0  # Defaults to USD
+    )
+    curr_sym = currency_lookup[selected_currency_name]
+
     input_method = st.radio("Data Source:", ["CSV Upload", "Manual Entry"])
+    
     if st.button("🔄 Reset System"):
         for key in st.session_state.keys(): del st.session_state[key]
         st.rerun()
 
 # --- 4. DATA INGESTION ---
+
+# --- GLOBAL CURRENCY SETTINGS ---
+currency_lookup = {
+    "USD ($)": "$", "EUR (€)": "€", "GBP (£)": "£", "NGN (₦)": "₦",
+    "GHS (GH₵)": "GH₵", "ZAR (R)": "R", "KES (KSh)": "KSh", "CAD ($)": "$",
+    "AUD ($)": "$", "JPY (¥)": "¥", "INR (₹)": "₹", "CNY (¥)": "¥"
+}
+
+# Add a search-friendly dropdown in the sidebar
+selected_currency_name = st.sidebar.selectbox(
+    "Select Reporting Currency", 
+    options=list(currency_lookup.keys()),
+    index=0  # Defaults to USD
+)
+
+# Extract just the symbol for use in calculations/text
+curr_sym = currency_lookup[selected_currency_name]
+
 df_input = None
 
 if input_method == "CSV Upload":
@@ -235,7 +272,8 @@ if 'fcst' in locals() or 'fcst' in globals():
             projected_sum, 
             status, 
             growth_pct, 
-            freq_label
+            freq_label,
+            curr_sym
         )
         st.download_button(
             label="Download PDF Summary", 
