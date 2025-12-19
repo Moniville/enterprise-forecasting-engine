@@ -210,49 +210,51 @@ if df_input is not None:
         st.plotly_chart(fig, use_container_width=True)
 
 # --- 7. EXPORT & PLAIN ENGLISH INSIGHTS ---
-st.subheader("📥 Export Reports")
-ex1, ex2 = st.columns(2)
 
-with ex1:
-    # Prepare CSV for raw data analysis
-    csv = fcst.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="Download CSV Data", 
-        data=csv, 
-        file_name='forecast_data.csv', 
-        mime='text/csv',
-        help="Download raw forecast coordinates for further analysis in Excel/SQL."
-    )
+# We use an 'if' check to ensure 'fcst' exists before rendering this section
+if 'fcst' in locals() or 'fcst' in globals():
+    st.subheader("📥 Export Reports")
+    ex1, ex2 = st.columns(2)
+    
+    with ex1:
+        # Standardize the data export for audit trails
+        csv = fcst.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="Download CSV Data", 
+            data=csv, 
+            file_name='forecast_data.csv', 
+            mime='text/csv',
+            help="Export raw time-series data for external validation."
+        )
+        
+    with ex2:
+        # Generate the byte stream for the executive summary
+        pdf_bytes = create_pdf_report(
+            hist['y'].sum(), 
+            hist['y'].mean(), 
+            projected_sum, 
+            status, 
+            growth_pct, 
+            freq_label
+        )
+        st.download_button(
+            label="Download PDF Summary", 
+            data=pdf_bytes, 
+            file_name='executive_report.pdf', 
+            mime='application/pdf',
+            help="Download the formatted executive summary."
+        )
 
-with ex2:
-    # Generate the byte stream for the PDF report
-    pdf_bytes = create_pdf_report(
-        hist['y'].sum(), 
-        hist['y'].mean(), 
-        projected_sum, 
-        status, 
-        growth_pct, 
-        freq_label
-    )
-    # Serve the PDF as a downloadable binary file
-    st.download_button(
-        label="Download PDF Summary", 
-        data=pdf_bytes, 
-        file_name='executive_report.pdf', 
-        mime='application/pdf',
-        help="Export a high-level executive summary for management stakeholders."
-    )
-
-st.divider()
-
-# --- STRATEGIC INTERPRETATION ---
-st.subheader("💡 Strategic Insights for Management")
-
-# Expander provides context without cluttering the main UI
-with st.expander("How to interpret this data", expanded=True):
-    st.write(f"""
-    * **Visual Coverage:** This chart displays the full **{horizon} {freq_label.lower()}** projection horizon.
-    * **Anomaly Detection:** Red markers (if present) highlight historical data points that significantly deviated from the expected statistical range.
-    * **Prediction Logic:** The model identifies a **{status}** trajectory toward a terminal value of **${end_val:,.2f}**.
-    * **Total Projected Amount:** The cumulative financial expectation for this horizon is **${projected_sum:,.2f}**.
-    """)
+    st.divider()
+    st.subheader("💡 Strategic Insights for Management")
+    
+    with st.expander("How to interpret this data", expanded=True):
+        st.write(f"""
+        * **Visual Coverage:** This chart displays the full **{horizon} {freq_label.lower()}** horizon.
+        * **Anomaly Detection:** Red markers highlight points that significantly deviated from the expected statistical range.
+        * **Prediction Logic:** The model identifies a **{status}** trajectory toward **${end_val:,.2f}**.
+        * **Total Projected Amount:** The cumulative sum of the future points is **${projected_sum:,.2f}**.
+        """)
+else:
+    # Display a friendly message to the user before they run the model
+    st.info("💡 Please upload data and click 'Execute Forecast' to generate exportable reports and insights.")
