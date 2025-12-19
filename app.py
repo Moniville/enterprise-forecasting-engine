@@ -5,18 +5,41 @@ import plotly.graph_objects as go
 from datetime import datetime
 from fpdf import FPDF
 import io
-
 from supabase import create_client, Client
 
-# ACCESSING SUPABASE CONFIGURATIONS FROM STREAMLIT SECRETS
-try:
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
-except:
-    # This allows us to run it locally  if we have a .env file
-    url = "Your_Local_Test_URL"
-    key = "Your_Local_Test_Key"
-superbase: Client = create_client(url, key)
+# --- 0. DATABASE & SECURITY CONFIG ---
+def init_connection():
+    try:
+        # 1. Attempt to get keys from Streamlit Cloud Secrets
+        if "SUPABASE_URL" in st.secrets and "SUPABASE_KEY" in st.secrets:
+            url = st.secrets["SUPABASE_URL"]
+            key = st.secrets["SUPABASE_KEY"]
+            return create_client(url, key)
+        else:
+            # 2. If secrets are missing, don't crash, just notify
+            st.warning("📡 Database connection: Offline (Credentials not found in Secrets)")
+            return None
+    except Exception as e:
+        st.error(f"⚠️ Database Connection Failed: {e}")
+        return None
+
+supabase = init_connection()
+
+def save_forecast_to_db(project_name, forecast_df):
+    """Saves analytics results to Supabase if connection is live."""
+    if supabase:
+        try:
+            # Convert to JSON for SQL storage
+            data_json = forecast_df.to_json(orient='records')
+            data = {
+                "project_name": project_name, 
+                "forecast_data": data_json,
+                "created_at": datetime.now().isoformat()
+            }
+            supabase.table("forecast_history").insert(data).execute()
+        except Exception as e:
+            st.sidebar.error(f"DB Write Failed: {e}")
+            
 
 # --- 1. ANALYTICS ENGINE ---
 @st.cache_resource
