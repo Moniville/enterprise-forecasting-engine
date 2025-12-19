@@ -36,15 +36,15 @@ def save_forecast_to_db(project_name, forecast_df):
         except Exception as e:
             st.sidebar.error(f"DB Write Failed: {e}")
 
-# --- 1. ANALYTICS ENGINE ---
+# --- 1. ANALYTICS ENGINE (ENHANCED) ---
 @st.cache_resource
 def run_forecast_model(df, periods, freq):
-    # Prophet uses an Additive Model: y(t) = trend + seasonality + holidays
+    # We return the model object as well to extract seasonality
     model = Prophet(yearly_seasonality=True, weekly_seasonality=True, daily_seasonality=False)
     model.fit(df)
     future = model.make_future_dataframe(periods=periods, freq=freq)
     forecast = model.predict(future)
-    return forecast
+    return forecast, model
 
 # --- 2. PDF REPORT GENERATOR ---
 def create_pdf_report(hist_total, avg_val, proj_total, status, growth_pct, freq_label, curr_sym, curr_name):
@@ -54,7 +54,6 @@ def create_pdf_report(hist_total, avg_val, proj_total, status, growth_pct, freq_
     pdf.cell(200, 10, txt="Executive Forecast Summary", ln=True, align='C')
     pdf.ln(10)
     
-    # Currency safety for PDF encoding
     display_curr = curr_sym if curr_sym not in ["GH₵", "₦", "د.إ", "﷼"] else curr_name.split(" ")[0]
     
     pdf.set_font("Arial", 'B', 12)
@@ -91,6 +90,10 @@ with st.sidebar:
     selected_currency_name = st.selectbox("Reporting Currency:", options=list(currency_lookup.keys()), index=0)
     curr_sym = currency_lookup[selected_currency_name]
     input_method = st.radio("Data Source:", ["CSV Upload", "Manual Entry"])
+    
+    st.divider()
+    st.header("2. Analysis Tuning")
+    ma_window = st.slider("Smoothing Intensity (Days):", min_value=2, max_value=60, value=7)
     
     if st.button("🔄 Reset System"):
         for key in st.session_state.keys(): del st.session_state[key]
@@ -137,18 +140,28 @@ if df_input is not None:
                 fixed_today = pd.Timestamp.today().normalize()
                 working_df['ds'] = pd.date_range(end=fixed_today, periods=len(working_df), freq=freq_map[freq_label])
             
+            # --- MANDATORY CLEANING & CALCULATION ---
             working_df = working_df.dropna(subset=['ds', 'y'])
+            working_df = working_df.sort_values('ds') 
+            working_df = working_df.groupby('ds')['y'].sum().reset_index()
+            
+            # Smoothing Logic (Moving Average)
+            working_df['ma'] = working_df['y'].rolling(window=ma_window, min_periods=1).mean()
+
             with st.spinner("AI Analysis in Progress..."):
-                st.session_state['forecast'] = run_forecast_model(working_df, horizon, freq_map[freq_label])
+                f_data, f_model = run_forecast_model(working_df, horizon, freq_map[freq_label])
+                st.session_state['forecast'] = f_data
+                st.session_state['model'] = f_model
                 st.session_state['history'] = working_df
                 st.session_state['analyzed'] = True
                 save_forecast_to_db(project_name, working_df)
+                st.success("Analysis Complete!")
         except Exception as e: st.error(f"Analysis Error: {e}")
 
     # --- 6. VISUALIZATION DASHBOARD ---
     if st.session_state.get('analyzed'):
         st.divider()
-        hist, fcst = st.session_state['history'], st.session_state['forecast']
+        hist, fcst, model = st.session_state['history'], st.session_state['forecast'], st.session_state['model']
         future_only = fcst.tail(horizon)
         projected_sum = future_only['yhat'].sum()
         
@@ -163,7 +176,7 @@ if df_input is not None:
         m3.metric("Projected Total", f"{curr_sym}{projected_sum:,.2f}")
 
         st.write("### 📊 Business Intelligence Perspectives")
-        view = st.radio("Switch View:", ["AI Strategic Forecast", "Anomaly Detector", "Model Performance", "Monthly History", "Annual Growth"], horizontal=True)
+        view = st.radio("Switch View:", ["AI Strategic Forecast", "Anomaly Detector", "Model Performance", "Weekly Patterns", "Annual Growth"], horizontal=True)
         fig = go.Figure()
 
         if view == "AI Strategic Forecast":
@@ -177,23 +190,21 @@ if df_input is not None:
             anoms = perf[(perf['y'] > perf['yhat_upper']) | (perf['y'] < perf['yhat_lower'])]
             fig.add_trace(go.Scatter(x=perf.index, y=perf['y'], mode='lines', name='Actual Performance', line=dict(color='#FFFFFF', width=1)))
             fig.add_trace(go.Scatter(x=anoms.index, y=anoms['y'], mode='markers', name='Anomaly', marker=dict(color='#FF4B4B', size=10)))
-            
             if not anoms.empty:
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Anomalies Found", len(anoms))
-                c2.metric("Highest Spike", f"{curr_sym}{anoms['y'].max():,.0f}")
-                c3.metric("Deepest Dip", f"{curr_sym}{anoms['y'].min():,.0f}")
-                # FIX: Using Lambda for safe dataframe formatting
                 st.dataframe(anoms[['y']].rename(columns={'y': 'Irregular Amount'}).style.format(lambda x: f"{curr_sym}{x:,.2f}"), use_container_width=True)
 
         elif view == "Model Performance":
-            st.info("💡 **Backtesting View:** Compares historical actuals against AI fitting to verify model reliability.")
-            fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], mode='lines', name='Actual Data', line=dict(color='white')))
+            st.info(f"💡 **Smoothing View:** Actual (faded) vs. {ma_window}-Day Avg (Teal) vs. AI Fit (Orange).")
+            fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], mode='lines', name='Raw Data', line=dict(color='rgba(255,255,255,0.1)', width=1)))
+            fig.add_trace(go.Scatter(x=hist['ds'], y=hist['ma'], mode='lines', name='Moving Average', line=dict(color='#00FFCC', width=3)))
             fig.add_trace(go.Scatter(x=fcst['ds'][:len(hist)], y=fcst['yhat'][:len(hist)], mode='lines', line=dict(dash='dash', color='orange'), name='AI Fit'))
 
-        elif view == "Monthly History":
-            monthly = hist.set_index('ds').resample('MS')['y'].sum().reset_index()
-            fig.add_trace(go.Bar(x=monthly['ds'], y=monthly['y'], marker_color="#636EFA", text=[f"{curr_sym}{x:,.0f}" for x in monthly['y']], textposition="outside", name="Monthly Total"))
+        elif view == "Weekly Patterns":
+            st.info("💡 **Day-of-Week Influence:** Which days typically drive the most volume?")
+            days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+            sample_week = pd.DataFrame({'ds': pd.date_range('2024-01-01', periods=7)}) 
+            weekly_comp = model.predict(sample_week)[['ds', 'weekly']]
+            fig.add_trace(go.Bar(x=days, y=weekly_comp['weekly'], marker_color='#00FFCC'))
 
         elif view == "Annual Growth":
             yearly = hist.set_index('ds').resample('YS')['y'].sum().reset_index()
@@ -202,7 +213,7 @@ if df_input is not None:
         fig.update_layout(template="plotly_dark", height=600, hovermode="x unified")
         st.plotly_chart(fig, use_container_width=True)
 
-        # --- 7. EXPORT & STRATEGIC INSIGHTS ---
+        # --- 7. EXPORT ---
         st.subheader("📥 Export Reports")
         ex1, ex2 = st.columns(2)
         with ex1:
@@ -216,9 +227,9 @@ if df_input is not None:
         st.subheader("💡 Strategic Insights for Management")
         with st.expander("How to interpret this data", expanded=True):
             st.write(f"""
-            * **Model Logic:** This forecast uses an **Additive Prophet Model**, decomposing your business data into trend and seasonal components.
-            * **Trajectory:** The AI identifies a **{status}** trajectory toward **{curr_sym}{end_val:,.2f}**.
-            * **Financial Horizon:** The total expected volume for the next {horizon} {freq_label.lower()} is **{curr_sym}{projected_sum:,.2f}**.
+            * **Model Logic:** Uses an Additive Prophet Model to separate trend from seasonality.
+            * **Trajectory:** AI identifies a **{status}** trajectory toward **{curr_sym}{end_val:,.2f}**.
+            * **Financial Horizon:** Total expected volume for {horizon} {freq_label.lower()} is **{curr_sym}{projected_sum:,.2f}**.
             """)
 else:
     st.info("💡 Please upload data and click 'Execute Analysis' to generate reports.")
