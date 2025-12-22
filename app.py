@@ -25,8 +25,7 @@ st.markdown("""
         margin-bottom: 25px; color: #0e1117; font-weight: bold; font-size: 16px;
     }
     .glass-card { background: rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 20px; border: 1px solid rgba(255, 255, 255, 0.1); margin-bottom: 20px; }
-    .main-title { font-size: 42px; font-weight: bold; color: #00B0F6; margin-top: -10px; margin-bottom: 5px; }
-    .brand-sub { font-size: 18px; color: #00FFCC; margin-bottom: 25px; font-weight: 500; }
+    .main-title { font-size: 42px; font-weight: bold; color: #00B0F6; margin-top: 0px; margin-bottom: 5px; }
     .interpretation-box { background: rgba(255, 255, 255, 0.05); padding: 25px; border-radius: 12px; border-left: 5px solid #00B0F6; margin-top: 20px; }
     .footer-section { padding: 40px; background: rgba(255,255,255,0.02); border-radius: 15px; margin-top: 50px; border: 1px solid rgba(255,255,255,0.05); }
     </style>
@@ -75,6 +74,14 @@ def perform_health_check(df, date_col, val_col):
 
 # --- 3. UI LAYOUT & BRANDING ---
 
+# TOP BRANDING (Above everything else)
+logo_col1, logo_col2 = st.columns([0.1, 0.9])
+with logo_col1:
+    if os.path.exists("assets/Hope tech 2.png"):
+        st.image("assets/Hope tech 2.png", width=80)
+with logo_col2:
+    st.markdown(f"## {BRAND_NAME}")
+
 # Top Support Banner
 st.markdown(f'<div class="support-bar">🚀 <b>Support Zenith Innovation:</b> Help us scale {PRODUCT_NAME}. <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline; margin-left: 10px;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
 
@@ -118,16 +125,9 @@ if is_admin:
     if st.button("End Session"): st.rerun()
     st.stop()
 
-# --- 4. MAIN DASHBOARD CONTENT ---
+# --- 4. DATA PROCESSING ---
 
-# Professional Header with Main Logo & Title
-head_col1, head_col2 = st.columns([0.15, 0.85])
-with head_col1:
-    if os.path.exists("assets/Hope tech 2.png"):
-        st.image("assets/Hope tech 2.png", width=100)
-with head_col2:
-    st.markdown(f'<p class="main-title">{PRODUCT_NAME} Analytics Engine</p>', unsafe_allow_html=True)
-    st.markdown(f'<p class="brand-sub">Powering Intelligence at {BRAND_NAME}</p>', unsafe_allow_html=True)
+st.markdown(f'<p class="main-title">{PRODUCT_NAME} Analytics Engine</p>', unsafe_allow_html=True)
 
 col_left, col_right = st.columns([2.2, 1.3])
 
@@ -212,7 +212,7 @@ with col_right:
             USER QUERY: {query}
             
             INSTRUCTION: Answer as a professional business analyst for {BRAND_NAME}. Do NOT output JSON, code, or charts. 
-            Use only text. If asked about yearly trends, aggregate the historical and forecasted totals.
+            Use only text.
             """
 
             try:
@@ -303,7 +303,7 @@ with f_right:
                 try:
                     supabase.table("feedback").insert({"email": email_in, "message": msg_in}).execute()
                     st.success("Ticket submitted successfully.")
-                except Exception as e:
+                except:
                     st.error("Database submission failed. Check RLS settings.")
             else: st.error("Incomplete fields.")
 
