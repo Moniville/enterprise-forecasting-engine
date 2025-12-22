@@ -140,41 +140,73 @@ with col_l:
                     st.session_state.update({'forecast': f_data, 'model': f_model, 'history': working_df, 'analyzed': True})
             except Exception as e: st.error(f"Logic Error: {e}")
 
-# --- 5. DEEP CONTEXT AI ENGINE ---
+# --- 5. CHAT-STYLE AI ENGINE WITH MEMORY ---
 with col_r:
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
     st.subheader("🤖 Pulse AI Analyst")
+
+    # Initialize Chat History in Session State if it doesn't exist
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    # Display Chat History (The "ChatGPT" look)
+    chat_container = st.container(height=400)
+    with chat_container:
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
     if st.session_state.get('analyzed') and ai_model:
-        query = st.text_input("Ask about your data:")
-        if query:
+        # Chat Input (The provision for texting stays at the bottom)
+        if query := st.chat_input("Ask Zenith Intelligence..."):
+            
+            # Add user message to history
+            st.session_state.messages.append({"role": "user", "content": query})
+            with chat_container:
+                with st.chat_message("user"):
+                    st.markdown(query)
+
+            # Prepare Context
             hist_data = st.session_state['history']
             forecast_data = st.session_state['forecast']
             
-            # Context Preparation for Accurate Yearly Sales Interpretation
-            total_hist = hist_data['y'].sum()
-            future_proj = forecast_data['yhat'].tail(horizon).sum()
-            data_range = f"{hist_data['ds'].min().date()} to {hist_data['ds'].max().date()}"
-            
-            prompt = f"""
-            CONTEXT REPORT for {project_name}:
-            - Data Range: {data_range}
-            - Historical Total: {curr_sym}{total_hist:,.2f}
-            - Forecast Period: {horizon} {freq_label}s
-            - Forecast Total: {curr_sym}{future_proj:,.2f}
-            
-            USER QUESTION: {query}
-            
-            INSTRUCTION: Use the totals provided above to answer. If the data is monthly but the user asks for yearly, aggregate the historical total and the future projection to provide an annual trajectory estimate.
+            context_summary = f"""
+            PROJECT: {project_name}
+            HISTORICAL TOTAL: {curr_sym}{hist_data['y'].sum():,.2f}
+            FORECAST TOTAL: {curr_sym}{forecast_data['yhat'].tail(horizon).sum():,.2f}
+            RANGE: {hist_data['ds'].min().date()} to {hist_data['ds'].max().date()}
             """
+
+            # Refined Instructions to prevent the AI from sending "JSON" or "Chart Code"
+            system_instruction = (
+                "You are a Business Analyst. Use the context provided to answer. "
+                "CRITICAL: Do not attempt to generate JSON, code, or charts. "
+                "Answer only in clear, professional text. If asked for a chart, "
+                "refer the user to the visual dashboard on the left."
+            )
+
+            prompt = f"{system_instruction}\n\n{context_summary}\n\nUser: {query}"
+
             try:
-                try: response = ai_model.generate_content(prompt)
+                # Generate AI Response
+                try:
+                    response = ai_model.generate_content(prompt)
                 except:
-                    with st.spinner("Retrying in 60s..."):
-                        time.sleep(60)
-                        response = ai_model.generate_content(prompt)
-                st.info(response.text)
-            except: st.error("AI is busy.")
-    else: st.info("Run analysis to activate AI.")
+                    time.sleep(60) # Auto-retry
+                    response = ai_model.generate_content(prompt)
+                
+                full_response = response.text
+                
+                # Add AI response to history
+                st.session_state.messages.append({"role": "assistant", "content": full_response})
+                with chat_container:
+                    with st.chat_message("assistant"):
+                        st.markdown(full_response)
+                        
+            except Exception as e:
+                st.error("Engine busy. Please try again.")
+    else:
+        st.info("Run Analysis to start chatting.")
     st.markdown('</div>', unsafe_allow_html=True)
 
 # --- 6. VISUALIZATION ---
@@ -229,3 +261,4 @@ with fr:
                 supabase.table("feedback").insert({"email": em, "message": ms}).execute()
                 st.success("Sent!")
 st.markdown('</div>', unsafe_allow_html=True)
+
