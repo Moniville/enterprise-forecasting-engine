@@ -10,5 +10,8 @@ prophet
 supabase
 fpdf
 
-# System Utilities
+# AI & System Utilities
+google-generativeai
 python-dotenv
+requests
+streamlit-lottie
