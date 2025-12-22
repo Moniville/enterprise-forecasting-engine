@@ -81,11 +81,17 @@ st.markdown(f'<div class="support-bar">🚀 <b>Support Zenith Innovation:</b> He
 # Sidebar with Logo & Config
 with st.sidebar:
     # Logo placement
-    logo_path = "assets/Hope tech 2.png"
+   logo_path = "assets/Hope tech 2.png"
+
+with st.sidebar:
     if os.path.exists(logo_path):
-        st.image(logo_path, use_column_width=True)
+        # This creates three columns to center your logo professionally
+        col1, col2, col3 = st.columns([1, 3, 1])
+        with col2:
+            st.image(logo_path, use_container_width=True)
     else:
-        st.subheader(f"🛡️ {BRAND_NAME}")
+        # Fallback to text if the image isn't found/uploaded yet
+        st.markdown(f"## 🛡️ {BRAND_NAME}")
     
     st.divider()
     st.header("Project Configuration")
@@ -271,3 +277,4 @@ with f_right:
                 st.success("Ticket submitted successfully.")
             else: st.error("Incomplete fields.")
 st.markdown('</div>', unsafe_allow_html=True)
+
