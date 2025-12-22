@@ -245,21 +245,40 @@ if st.session_state.get('analyzed'):
     fig.update_layout(template="plotly_dark", height=450)
     st.plotly_chart(fig, use_container_width=True)
 
-# --- 7. FOOTER ---
+# --- 7. FOOTER & ROBUST FEEDBACK ---
 st.markdown('<div class="footer-section">', unsafe_allow_html=True)
 fl, fr = st.columns(2)
 with fl:
     st.write("### Engineer")
-    st.write("**Monivi Hope** | Lead at **Hope Tech**")
-    st.markdown("[🔗 Portfolio](https://linktr.ee/MoniviHope)")
+    st.write(f"**Monivi Hope** | Lead at **{BRAND_NAME}**")
+    st.markdown("[🔗 Digital Portfolio](https://linktr.ee/MoniviHope)")
 with fr:
-    st.write("### Support")
-    with st.form("fb"):
-        em, ms = st.text_input("Email"), st.text_area("Message")
-        if st.form_submit_button("Submit"):
-            if supabase and em and ms:
-                supabase.table("feedback").insert({"email": em, "message": ms}).execute()
-                st.success("Sent!")
+    st.write("### Support Gateway")
+    with st.form("feedback_system", clear_on_submit=True):
+        em = st.text_input("Contact Email")
+        ms = st.text_area("Message / Observation")
+        submitted = st.form_submit_button("Submit Ticket")
+        
+        if submitted:
+            if not em or not ms:
+                st.error("Please fill in all fields.")
+            elif supabase is None:
+                st.warning("Database not connected. Please check your Secrets.")
+            else:
+                try:
+                    # We wrap this in a try-block so a DB error doesn't kill the app
+                    supabase.table("feedback").insert({
+                        "email": em, 
+                        "message": ms
+                    }).execute()
+                    st.success("✅ Ticket Logged Successfully!")
+                except Exception as e:
+                    # This shows the error without crashing the UI
+                    st.error("Database Error: Please ensure your Supabase table is named 'feedback' with 'email' and 'message' columns.")
+                    # Developer tip:
+                    with st.expander("See technical details"):
+                        st.code(str(e))
 st.markdown('</div>', unsafe_allow_html=True)
+
 
 
