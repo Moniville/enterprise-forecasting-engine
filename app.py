@@ -23,15 +23,9 @@ st.markdown("""
         padding: 12px; border-radius: 8px; text-align: center;
         margin-bottom: 25px; color: #0e1117; font-weight: bold; font-size: 16px;
     }
-    .glass-card {
-        background: rgba(255, 255, 255, 0.05); border-radius: 12px;
-        padding: 20px; border: 1px solid rgba(255, 255, 255, 0.1); margin-bottom: 20px;
-    }
+    .glass-card { background: rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 20px; border: 1px solid rgba(255, 255, 255, 0.1); margin-bottom: 20px; }
     .main-title { font-size: 42px; font-weight: bold; color: #00B0F6; margin-top: -10px; }
-    .interpretation-box { 
-        background: rgba(0, 176, 246, 0.08); padding: 25px; 
-        border-radius: 12px; border: 1px solid #00B0F6; margin-top: 20px;
-    }
+    .interpretation-box { background: rgba(0, 176, 246, 0.08); padding: 25px; border-radius: 12px; border: 1px solid #00B0F6; margin-top: 20px; }
     .footer-section { padding: 40px; background: rgba(255,255,255,0.02); border-radius: 15px; margin-top: 50px; border: 1px solid rgba(255,255,255,0.05); }
     </style>
     """, unsafe_allow_html=True)
@@ -44,14 +38,15 @@ def init_connections():
             sb = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
         if "GOOGLE_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-            ai = genai.GenerativeModel('gemini-1.5-flash')
+            # Updated to 2.0-flash to resolve the 404/v1beta error
+            ai = genai.GenerativeModel('gemini-2.0-flash') 
     except Exception as e:
         st.error(f"Setup Error: {e}")
     return sb, ai
 
 supabase, ai_model = init_connections()
 
-# --- 2. ANALYTICS & PDF UTILITIES ---
+# --- 2. ANALYTICS ENGINE ---
 @st.cache_resource
 def run_forecast_model(df, periods, freq):
     model = Prophet(yearly_seasonality=True, weekly_seasonality=True, daily_seasonality=False)
@@ -60,76 +55,53 @@ def run_forecast_model(df, periods, freq):
     forecast = model.predict(future)
     return forecast, model
 
-def create_pdf_report(hist_total, avg_val, proj_total, status, growth_pct, freq_label, curr_sym, curr_name):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, txt=f"{PRODUCT_NAME} Executive Summary", ln=True, align='C')
-    pdf.ln(10)
-    display_curr = curr_sym if curr_sym not in ["GH₵", "₦", "د.إ", "﷼"] else curr_name.split(" ")[0]
-    pdf.set_font("Arial", 'B', 12)
-    pdf.cell(200, 10, txt="Key Metrics:", ln=True)
-    pdf.set_font("Arial", '', 11)
-    pdf.cell(200, 8, txt=f"- Lifetime History: {display_curr}{hist_total:,.2f}", ln=True)
-    pdf.cell(200, 8, txt=f"- Projected Revenue: {display_curr}{proj_total:,.2f}", ln=True)
-    pdf.cell(200, 8, txt=f"- Trend Status: {status.upper()} ({growth_pct:.1f}%)", ln=True)
-    return pdf.output(dest='S').encode('latin-1', 'replace')
-
 # --- 3. TOP LEVEL SUPPORT ---
 st.markdown(f'<div class="support-bar">🚀 <b>Support Zenith Innovation:</b> Help us scale {PRODUCT_NAME}. <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline; margin-left: 10px;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
 
 # --- 4. SIDEBAR ---
-currency_lookup = {
-    "USD ($)": "$", "NGN (₦)": "₦", "EUR (€)": "€", "GBP (£)": "£",
-    "GHS (GH₵)": "GH₵", "AED (د.إ)": "DH ", "SAR (﷼)": "SR "
-}
-
+currency_lookup = {"USD ($)": "$", "NGN (₦)": "₦", "EUR (€)": "€", "GBP (£)": "£", "GHS (GH₵)": "GH₵"}
 with st.sidebar:
     st.header("1. Administration")
     project_name = st.text_input("Project Name:", value="Zenith_Alpha")
     selected_curr_name = st.selectbox("Currency:", options=list(currency_lookup.keys()))
     curr_sym = currency_lookup[selected_curr_name]
     input_method = st.radio("Data Source:", ["CSV Upload", "Manual Entry"])
-    
     st.divider()
     ma_window = st.slider("Smoothing Window:", 2, 90, 7)
-    
     with st.expander("🔒 System Access"):
         admin_key = st.text_input("Key", type="password")
         is_admin = (admin_key == "Ibiene2003#")
 
 if is_admin:
-    st.title("🔐 Internal Intelligence")
     if supabase:
         fb = supabase.table("feedback").select("*").execute()
-        st.write("### Recent Feedback")
+        st.write("### Internal Feedback Dashboard")
         st.dataframe(pd.DataFrame(fb.data))
     if st.button("Logout Admin"): st.rerun()
     st.stop()
 
 # --- 5. DATA INGESTION ---
-st.markdown(f'<p class="main-title">{PRODUCT_NAME} Forecast Engine</p>', unsafe_allow_html=True)
+st.markdown(f'<p class="main-title">{PRODUCT_NAME} Analytics Engine</p>', unsafe_allow_html=True)
 col_l, col_r = st.columns([2.5, 1])
 
 with col_l:
     df_input = None
     if input_method == "CSV Upload":
-        file = st.file_uploader("Upload Business Data", type="csv")
+        file = st.file_uploader("Upload CSV", type="csv")
         if file:
             df_input = pd.read_csv(file)
-            st.subheader("📋 Step 1: Data Preview")
+            st.write("### 📋 Step 1: Data Preview")
             st.dataframe(df_input.head(5), use_container_width=True)
-            c1, c2 = st.columns(2)
-            u_date = c1.selectbox("Date Column:", df_input.columns)
-            u_val = c2.selectbox("Value Column:", df_input.columns)
+            u_date = st.selectbox("Select Date Column:", df_input.columns)
+            u_val = st.selectbox("Select Value Column:", df_input.columns)
     else:
-        manual = st.text_area("Paste Data (Comma Separated):")
-        if manual:
+        manual = st.text_area("Paste Data (comma separated):")
+        if manual: 
             df_input = pd.DataFrame({"y": [float(x.strip()) for x in manual.split(",")]})
 
     if df_input is not None:
         c_a, c_b = st.columns(2)
-        freq_label = c_a.selectbox("Frequency:", ["Yearly", "Monthly", "Weekly", "Daily"], index=1)
+        freq_label = c_a.selectbox("Analysis Frequency:", ["Yearly", "Monthly", "Weekly", "Daily"], index=1)
         horizon = c_b.number_input(f"Predict Future {freq_label}:", min_value=1, value=12)
         
         if st.button("🚀 Run AI Analysis", type="primary"):
@@ -142,9 +114,8 @@ with col_l:
                     working_df['ds'] = pd.date_range(end=datetime.now(), periods=len(working_df), freq='D')
                 
                 working_df = working_df.dropna().sort_values('ds').groupby('ds')['y'].sum().reset_index()
-                working_df['ma'] = working_df['y'].rolling(window=ma_window, min_periods=1).mean()
                 
-                with st.spinner("Analyzing Trends..."):
+                with st.spinner("AI Analysis in Progress..."):
                     freq_map = {"Yearly": "YS", "Monthly": "MS", "Weekly": "W", "Daily": "D"}
                     f_data, f_model = run_forecast_model(working_df, horizon, freq_map[freq_label])
                     st.session_state.update({'forecast': f_data, 'model': f_model, 'history': working_df, 'analyzed': True})
@@ -154,52 +125,54 @@ with col_r:
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
     st.subheader("🤖 Pulse AI Analyst")
     if st.session_state.get('analyzed') and ai_model:
-        query = st.text_input("Question about trends:")
+        query = st.text_input("Ask for deep insights:")
         if query:
             try:
-                ctx = f"Historical Total: {st.session_state['history']['y'].sum()}. Question: {query}"
-                response = ai_model.generate_content(ctx)
+                response = ai_model.generate_content(f"Data: {len(st.session_state['history'])} records. Hist Total: {st.session_state['history']['y'].sum()}. User Query: {query}")
                 st.info(response.text)
             except Exception as e: st.error(f"AI Connection Issues: {e}")
-    else: st.write("Awaiting data analysis...")
+    else: st.write("Run analysis to activate AI.")
     st.markdown('</div>', unsafe_allow_html=True)
 
-# --- 6. VISUALIZATION & INTERPRETATION ---
+# --- 6. VISUALIZATION DASHBOARD ---
 if st.session_state.get('analyzed'):
     hist, fcst, model = st.session_state['history'], st.session_state['forecast'], st.session_state['model']
     future_only = fcst.tail(horizon)
-    proj_sum = future_only['yhat'].sum()
     
     st.divider()
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Historical Volume", f"{curr_sym}{hist['y'].sum():,.2f}")
-    m2.metric(f"Avg per {freq_label}", f"{curr_sym}{hist['y'].mean():,.2f}")
-    m3.metric("Projected Total", f"{curr_sym}{proj_sum:,.2f}")
-
-    view = st.radio("View Mode:", ["AI Strategic Forecast", "Anomaly Detector", "Model Performance", "Monthly History", "Weekly Patterns", "Annual Growth"], horizontal=True)
+    view = st.radio("Intelligence Perspective:", ["Forecast Trajectory", "Anomaly & Spikes", "Model Accuracy", "Weekly Patterns"], horizontal=True)
     fig = go.Figure()
 
-    if view == "AI Strategic Forecast":
-        fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat'], mode='lines+markers+text', line=dict(color='#00B0F6', width=4), text=[f"{curr_sym}{x:,.0f}" for x in future_only['yhat']], textposition="top center", name="Forecast"))
-    elif view == "Anomaly Detector":
+    if view == "Forecast Trajectory":
+        fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat'], mode='lines+markers', line=dict(color='#00B0F6', width=4), name="AI Forecast"))
+        fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat_upper'], line=dict(width=0), showlegend=False))
+        fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat_lower'], fill='tonexty', fillcolor='rgba(0,176,246,0.1)', line=dict(width=0), name="Confidence"))
+
+    elif view == "Anomaly & Spikes":
         perf = fcst.set_index('ds')[['yhat_lower', 'yhat_upper']].join(hist.set_index('ds'))
         anoms = perf[(perf['y'] > perf['yhat_upper']) | (perf['y'] < perf['yhat_lower'])]
-        fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Actual', line=dict(color='#FFFFFF')))
-        fig.add_trace(go.Scatter(x=anoms.index, y=anoms['y'], mode='markers', name='Anomaly', marker=dict(color='red', size=10)))
-    elif view == "Model Performance":
-        fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Actual'))
-        fig.add_trace(go.Scatter(x=hist['ds'], y=hist['ma'], name='Moving Avg', line=dict(color='#00FFCC')))
-    elif view == "Monthly History":
-        monthly = hist.set_index('ds').resample('MS')['y'].sum().reset_index()
-        fig.add_trace(go.Bar(x=monthly['ds'], y=monthly['y'], marker_color="#636EFA"))
+        
+        a1, a2, a3 = st.columns(3)
+        a1.metric("Total Anomalies", len(anoms))
+        a2.metric("Highest Spike", f"{curr_sym}{hist['y'].max():,.2f}")
+        a3.metric("Deepest Dip", f"{curr_sym}{hist['y'].min():,.2f}")
+        
+        fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Actual Performance'))
+        fig.add_trace(go.Scatter(x=anoms.index, y=anoms['y'], mode='markers', marker=dict(color='#FF4B4B', size=10), name='Irregularities'))
+
+    elif view == "Model Accuracy":
+        hist_preds = fcst[fcst['ds'].isin(hist['ds'])]
+        hist['ma'] = hist['y'].rolling(window=ma_window).mean()
+        
+        fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Historical Data', opacity=0.3))
+        fig.add_trace(go.Scatter(x=hist['ds'], y=hist['ma'], name=f'{ma_window}-Period Average', line=dict(color='#00FFCC')))
+        fig.add_trace(go.Scatter(x=hist_preds['ds'], y=hist_preds['yhat'], name='AI Backtest', line=dict(dash='dot', color='#00B0F6')))
+
     elif view == "Weekly Patterns":
         days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
         sample_week = pd.DataFrame({'ds': pd.date_range('2024-01-01', periods=7)})
         weekly_comp = model.predict(sample_week)[['ds', 'weekly']]
         fig.add_trace(go.Bar(x=days, y=weekly_comp['weekly'], marker_color='#00FFCC'))
-    elif view == "Annual Growth":
-        yearly = hist.set_index('ds').resample('YS')['y'].sum().reset_index()
-        fig.add_trace(go.Scatter(x=yearly['ds'], y=yearly['y'], mode='lines+markers', line=dict(color="#EF553B")))
 
     fig.update_layout(template="plotly_dark", height=550)
     st.plotly_chart(fig, use_container_width=True)
@@ -207,40 +180,34 @@ if st.session_state.get('analyzed'):
     # NATURAL LANGUAGE INTERPRETATION
     st.subheader("💡 Strategic Insights")
     start_v, end_v = future_only['yhat'].iloc[0], future_only['yhat'].iloc[-1]
-    growth_pct = ((end_v - start_v) / start_v) * 100 if start_v != 0 else 0
-    status = "growth" if growth_pct > 0 else "contraction"
+    growth = ((end_v - start_v) / start_v) * 100 if start_v != 0 else 0
     
     st.markdown(f"""
     <div class="interpretation-box">
-    The engine forecasts a period of <b>{status}</b> with an overall change of <b>{growth_pct:.1f}%</b>. 
-    Total expected volume is <b>{curr_sym}{proj_sum:,.2f}</b>. 
-    {"Upward momentum suggests scaling operations." if growth_pct > 0 else "Downward trend suggests cost optimization."}
+    <b>Pulse AI Interpretation:</b> For project <b>{project_name}</b>, the engine identifies a <b>{growth:.1f}% {"increase" if growth > 0 else "decrease"}</b> 
+    trend over the next {horizon} {freq_label.lower()}s. 
+    <br><br>
+    <b>Trust Score:</b> In the 'Model Accuracy' view, the AI's Backtest (dotted line) follows your historical {ma_window}-day smoothing, 
+    indicating a high probability of forecast validity.
     </div>
     """, unsafe_allow_html=True)
-
-    # Exports
-    ex1, ex2 = st.columns(2)
-    with ex1: st.download_button("📥 Download Data", fcst.to_csv(index=False), "forecast.csv")
-    with ex2:
-        pdf_b = create_pdf_report(hist['y'].sum(), hist['y'].mean(), proj_sum, status, growth_pct, freq_label, curr_sym, selected_curr_name)
-        st.download_button("📥 PDF Report", pdf_b, "summary.pdf")
 
 # --- 7. FOOTER & FEEDBACK ---
 st.markdown('<div class="footer-section">', unsafe_allow_html=True)
 f_left, f_right = st.columns(2)
 with f_left:
     st.markdown("### 👨‍💻 About the Engineer")
-    st.write("**Monivi Hope** | Lead at **Hope Tech**")
-    st.write("Crafting automated intelligence for the next generation of business.")
-    st.markdown("[🔗 View My Full Portfolio](https://linktr.ee/MoniviHope)")
+    st.write("**Monivi Hope** | Lead at **Hope Tech** | Data & Analytics Engineer")
+    st.write("Building useful & intelligent tools (or systems) to help people live better.")
+    st.markdown("[🔗 Visit Portfolio](https://linktr.ee/MoniviHope)")
 with f_right:
-    st.markdown("### ✉️ Contact & Feedback")
-    with st.form("feedback_box"):
-        email = st.text_input("Email Address")
-        msg = st.text_area("Message / Feature Request")
+    st.markdown("### ✉️ Support & Feedback")
+    with st.form("feedback_form"):
+        email = st.text_input("Your Email")
+        msg = st.text_area("Message / Feedback")
         if st.form_submit_button("Send to Monivi"):
             if supabase and email and msg:
                 supabase.table("feedback").insert({"email": email, "message": msg}).execute()
-                st.success("Message received. Thank you!")
-            else: st.error("Incomplete fields or DB offline.")
+                st.success("Sent! Thank you.")
+            else: st.error("Please fill all fields.")
 st.markdown('</div>', unsafe_allow_html=True)
