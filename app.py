@@ -25,7 +25,8 @@ st.markdown("""
         margin-bottom: 25px; color: #0e1117; font-weight: bold; font-size: 16px;
     }
     .glass-card { background: rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 20px; border: 1px solid rgba(255, 255, 255, 0.1); margin-bottom: 20px; }
-    .main-title { font-size: 42px; font-weight: bold; color: #00B0F6; margin-top: -10px; }
+    .main-title { font-size: 42px; font-weight: bold; color: #00B0F6; margin-top: -10px; margin-bottom: 5px; }
+    .brand-sub { font-size: 18px; color: #00FFCC; margin-bottom: 25px; font-weight: 500; }
     .interpretation-box { background: rgba(255, 255, 255, 0.05); padding: 25px; border-radius: 12px; border-left: 5px solid #00B0F6; margin-top: 20px; }
     .footer-section { padding: 40px; background: rgba(255,255,255,0.02); border-radius: 15px; margin-top: 50px; border: 1px solid rgba(255,255,255,0.05); }
     </style>
@@ -117,9 +118,17 @@ if is_admin:
     if st.button("End Session"): st.rerun()
     st.stop()
 
-# --- 4. DATA PROCESSING ---
+# --- 4. MAIN DASHBOARD CONTENT ---
 
-st.markdown(f'<p class="main-title">{PRODUCT_NAME} Analytics Engine</p>', unsafe_allow_html=True)
+# Professional Header with Main Logo & Title
+head_col1, head_col2 = st.columns([0.15, 0.85])
+with head_col1:
+    if os.path.exists("assets/Hope tech 2.png"):
+        st.image("assets/Hope tech 2.png", width=100)
+with head_col2:
+    st.markdown(f'<p class="main-title">{PRODUCT_NAME} Analytics Engine</p>', unsafe_allow_html=True)
+    st.markdown(f'<p class="brand-sub">Powering Intelligence at {BRAND_NAME}</p>', unsafe_allow_html=True)
+
 col_left, col_right = st.columns([2.2, 1.3])
 
 with col_left:
@@ -135,7 +144,7 @@ with col_left:
             u_date = st.selectbox("Map Date Column:", df_input.columns)
             u_val = st.selectbox("Map Target Value:", df_input.columns)
             
-            # Integrated Health Check
+            # Health Check Execution
             health_issues = perform_health_check(df_input, u_date, u_val)
             if health_issues:
                 for issue in health_issues: st.warning(f"⚠️ {issue}")
@@ -179,7 +188,6 @@ with col_right:
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Chat Display
     chat_container = st.container(height=400)
     with chat_container:
         for message in st.session_state.messages:
@@ -192,7 +200,6 @@ with col_right:
             with chat_container:
                 with st.chat_message("user"): st.markdown(query)
 
-            # Context Preparation for Precise Answers
             hist_data = st.session_state['history']
             forecast_data = st.session_state['forecast']
             
@@ -204,8 +211,8 @@ with col_right:
             
             USER QUERY: {query}
             
-            INSTRUCTION: Answer as a professional business analyst. Do NOT output JSON, code, or charts. 
-            Use only text. If asked about yearly data, aggregate the totals provided above.
+            INSTRUCTION: Answer as a professional business analyst for {BRAND_NAME}. Do NOT output JSON, code, or charts. 
+            Use only text. If asked about yearly trends, aggregate the historical and forecasted totals.
             """
 
             try:
@@ -297,7 +304,7 @@ with f_right:
                     supabase.table("feedback").insert({"email": email_in, "message": msg_in}).execute()
                     st.success("Ticket submitted successfully.")
                 except Exception as e:
-                    st.error("Database submission failed. Please ensure RLS is disabled in Supabase.")
+                    st.error("Database submission failed. Check RLS settings.")
             else: st.error("Incomplete fields.")
 
 # Final Bottom Support Banner
