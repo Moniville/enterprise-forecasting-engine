@@ -37,8 +37,8 @@ def init_connections():
             sb = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
         if "GOOGLE_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-            # Using 1.5-flash as it's more stable for Free Quotas than 2.0 currently
-            ai = genai.GenerativeModel('gemini-1.5-flash') 
+            # USE 'gemini-1.5-flash-latest' to avoid the v1beta 404 error
+            ai = genai.GenerativeModel('gemini-1.5-flash-latest') 
     except Exception as e:
         st.error(f"Setup Error: {e}")
     return sb, ai
@@ -84,6 +84,8 @@ col_l, col_r = st.columns([2.5, 1])
 
 with col_l:
     df_input = None
+    u_date, u_val = None, None # Initialize to avoid NameError
+    
     if input_method == "CSV Upload":
         file = st.file_uploader("Upload CSV", type="csv")
         if file:
@@ -93,8 +95,12 @@ with col_l:
             u_date = st.selectbox("Date Column:", df_input.columns)
             u_val = st.selectbox("Value Column:", df_input.columns)
     else:
-        manual = st.text_area("Paste Data:")
-        if manual: df_input = pd.DataFrame({"y": [float(x.strip()) for x in manual.split(",")]})
+        manual = st.text_area("Paste Data (e.g. 500, 600, 700):")
+        if manual: 
+            try:
+                vals = [float(x.strip()) for x in manual.split(",") if x.strip()]
+                df_input = pd.DataFrame({"y": vals})
+            except: st.error("Please enter numbers only, separated by commas.")
 
     if df_input is not None:
         c_a, c_b = st.columns(2)
@@ -103,15 +109,22 @@ with col_l:
         
         if st.button("🚀 Run AI Analysis", type="primary"):
             try:
-                working_df = df_input[[u_date, u_val]].copy().rename(columns={u_date: 'ds', u_val: 'y'})
-                working_df['ds'] = pd.to_datetime(working_df['ds'], errors='coerce')
+                if input_method == "CSV Upload":
+                    working_df = df_input[[u_date, u_val]].copy().rename(columns={u_date: 'ds', u_val: 'y'})
+                    working_df['ds'] = pd.to_datetime(working_df['ds'], errors='coerce')
+                else:
+                    # FIX: Generate dates for manual entry based on selected frequency
+                    freq_code = {"Yearly": "YS", "Monthly": "MS", "Weekly": "W", "Daily": "D"}[freq_label]
+                    working_df = df_input.copy()
+                    working_df['ds'] = pd.date_range(end=datetime.now(), periods=len(working_df), freq=freq_code)
+                
                 working_df = working_df.dropna().sort_values('ds').groupby('ds')['y'].sum().reset_index()
                 
                 with st.spinner("Analyzing..."):
                     freq_map = {"Yearly": "YS", "Monthly": "MS", "Weekly": "W", "Daily": "D"}
                     f_data, f_model = run_forecast_model(working_df, horizon, freq_map[freq_label])
                     st.session_state.update({'forecast': f_data, 'model': f_model, 'history': working_df, 'analyzed': True})
-            except Exception as e: st.error(f"Error: {e}")
+            except Exception as e: st.error(f"Logic Error: {e}")
 
 with col_r:
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
@@ -120,9 +133,12 @@ with col_r:
         query = st.text_input("Ask about your data:")
         if query:
             try:
-                response = ai_model.generate_content(f"Data context: {len(st.session_state['history'])} records. Query: {query}")
+                # Direct check to see if query is "hello" to test connection
+                response = ai_model.generate_content(f"You are the Pulse AI Analyst. Answer this: {query}")
                 st.info(response.text)
-            except Exception as e: st.error(f"AI Quota Reached. Please wait a minute and try again. (Technical: {e})")
+            except Exception as e: 
+                st.warning("AI is busy or Quota reached. Please wait 60 seconds.")
+                st.exception(e) # This will show the actual technical error for debugging
     st.markdown('</div>', unsafe_allow_html=True)
 
 # --- 6. DASHBOARD ---
@@ -134,7 +150,6 @@ if st.session_state.get('analyzed'):
     fig = go.Figure()
 
     if view == "Forecast Trajectory":
-        # SIMPLE AND CLEAN FOR BUSINESS PEOPLE
         fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat'], mode='lines+markers', line=dict(color='#00B0F6', width=4), name="Prediction"))
         fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat_upper'], line=dict(width=0), showlegend=False))
         fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat_lower'], fill='tonexty', fillcolor='rgba(0,176,246,0.1)', line=dict(width=0), name="Margin of Error"))
@@ -155,9 +170,8 @@ if st.session_state.get('analyzed'):
         fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Actual Data', opacity=0.3))
         fig.add_trace(go.Scatter(x=hist['ds'], y=hist['ma'], name='Smoothed Trend', line=dict(color='#00FFCC')))
         fig.add_trace(go.Scatter(x=hist_preds['ds'], y=hist_preds['yhat'], name='AI Backtest', line=dict(dash='dot', color='#00B0F6')))
-        
         st.markdown("### 🎯 Trust Score Analysis")
-        st.write(f"The dotted blue line shows how the AI would have predicted your **past** data. Because it follows your {ma_window}-day average closely, you can trust this model for future decisions.")
+        st.write(f"The dotted blue line represents the AI's 'hindsight'. Since it mirrors your real data {ma_window}-day average, the forecast is considered statistically reliable.")
 
     elif view == "Monthly History":
         monthly = hist.set_index('ds').resample('MS')['y'].sum().reset_index()
@@ -180,14 +194,13 @@ if st.session_state.get('analyzed'):
     st.subheader("💡 Strategic Business Interpretation")
     start_v, end_v = future_only['yhat'].iloc[0], future_only['yhat'].iloc[-1]
     growth = ((end_v - start_v) / start_v) * 100 if start_v != 0 else 0
-    proj_total = future_only['yhat'].sum()
     
     st.markdown(f"""
     <div class="interpretation-box">
-    <b>Report for {project_name}:</b> Based on historical data, we anticipate a total revenue/volume of <b>{curr_sym}{proj_total:,.2f}</b> over the next {horizon} {freq_label.lower()}s. 
+    <b>Report for {project_name}:</b> The AI expects total volume to reach <b>{curr_sym}{future_only['yhat'].sum():,.2f}</b>. 
     <br><br>
-    <b>The Verdict:</b> The business is currently on a <b>{growth:.1f}% {"Growth" if growth > 0 else "Decline"}</b> trajectory. 
-    {"This indicates a strong market position; consider increasing inventory or marketing spend." if growth > 0 else "This suggests a cooling period; focus on cost-cutting or customer retention strategies."}
+    <b>The Verdict:</b> Your data shows a <b>{growth:.1f}% {"Growth" if growth > 0 else "Decline"}</b> trend. 
+    {"Recommendation: Scale operations to meet increasing demand." if growth > 0 else "Recommendation: Review overhead costs and retention strategies."}
     </div>
     """, unsafe_allow_html=True)
 
@@ -203,9 +216,9 @@ with f_right:
     st.markdown("### ✉️ Support")
     with st.form("feedback"):
         email = st.text_input("Email")
-        msg = st.text_area("How can we help?")
+        msg = st.text_area("Message")
         if st.form_submit_button("Submit"):
             if supabase and email and msg:
                 supabase.table("feedback").insert({"email": email, "message": msg}).execute()
-                st.success("Message received!")
+                st.success("Sent!")
 st.markdown('</div>', unsafe_allow_html=True)
