@@ -69,7 +69,7 @@ def perform_health_check(df, date_col, val_col):
     return issues
 
 # --- 3. UI LAYOUT ---
-st.markdown(f'<div class="support-bar">🚀 <b>Support Zenith Innovation:</b> Help scale {PRODUCT_NAME}. <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline;">Tip/Donate</a></div>', unsafe_allow_html=True)
+st.markdown(f'<div class="support-bar">🚀 <b>Support Pulse AI:</b> Help scale {PRODUCT_NAME}. <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline;">Tip/Donate</a></div>', unsafe_allow_html=True)
 
 with st.sidebar:
     logo_path = "assets/Hope tech 2.png"
@@ -79,7 +79,7 @@ with st.sidebar:
     else: st.subheader(f"🛡️ {BRAND_NAME}")
     
     st.divider()
-    project_name = st.text_input("Project Name:", value="Zenith Ecommerce")
+    project_name = st.text_input("Project Name:", value="Pulse AI")
     currency_lookup = {"USD ($)": "$", "NGN (₦)": "₦", "EUR (€)": "€", "GBP (£)": "£", "GHS (GH₵)": "GH₵"}
     curr_sym = currency_lookup[st.selectbox("Currency:", options=list(currency_lookup.keys()))]
     input_method = st.radio("Source:", ["CSV Upload (Recommended)", "Manual Entry"])
@@ -158,7 +158,7 @@ with col_r:
 
     if st.session_state.get('analyzed') and ai_model:
         # Chat Input (The provision for texting stays at the bottom)
-        if query := st.chat_input("Ask Zenith Intelligence..."):
+        if query := st.chat_input("Ask Pulse AI..."):
             
             # Add user message to history
             st.session_state.messages.append({"role": "user", "content": query})
@@ -261,4 +261,5 @@ with fr:
                 supabase.table("feedback").insert({"email": em, "message": ms}).execute()
                 st.success("Sent!")
 st.markdown('</div>', unsafe_allow_html=True)
+
 
