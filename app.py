@@ -20,7 +20,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 0.2 GOOGLE ANALYTICS ---
+# --- 0.2 BULLETPROOF GOOGLE ANALYTICS ---
 GA_ID = "G-2XRSHF2S9F"
 ga_injection = f"""
     <script>
@@ -36,7 +36,7 @@ ga_injection = f"""
 """
 components.html(ga_injection, height=0, width=0)
 
-# CUSTOM CSS: Unified Dark Theme
+# CUSTOM CSS: Unified Dark Theme & Visibility Fixes
 st.markdown("""
     <style>
         header[data-testid="stHeader"] { background-color: #0e1117 !important; }
@@ -47,6 +47,8 @@ st.markdown("""
             color: #ffffff !important;
             border: 2px solid #00B0F6 !important;
             font-weight: bold !important;
+            opacity: 1 !important;
+            display: inline-flex !important;
         }
         button:hover { background-color: #00B0F6 !important; color: #0e1117 !important; box-shadow: 0 0 15px #00B0F6 !important; }
 
@@ -80,7 +82,7 @@ def init_connections():
 
 supabase, ai_model = init_connections()
 
-# --- 2. ANALYTICS TOOLS ---
+# --- 2. FORECASTING & HEALTH TOOLS ---
 @st.cache_resource
 def run_forecast_model(df, periods, freq):
     model = Prophet(yearly_seasonality=True, weekly_seasonality=True, daily_seasonality=False)
@@ -96,7 +98,7 @@ def perform_health_check(df, date_col, val_col):
     if len(df) < 2: issues.append("Insufficient data for forecasting.")
     return issues
 
-# --- 3. UI LAYOUT ---
+# --- 3. UI LAYOUT & BRANDING ---
 if os.path.exists("assets/Hope tech 2.png"):
     st.image("assets/Hope tech 2.png", width=120)
 
@@ -111,12 +113,16 @@ with st.sidebar:
     
     st.divider()
     st.header("Project Configuration")
-    # RESTORED: Generic default value so user defines the namespace
-    project_name = st.text_input("Project Namespace:", value="Project Alpha")
+    
+    # RESTORED: Original Namespace logic and Reminder caption
+    project_name = st.text_input("Project Namespace:", value="Your Project Name")
+    st.caption("💡 *Please remember to name your specific project above.*")
+    
     currency_lookup = {"USD ($)": "$", "NGN (₦)": "₦", "EUR (€)": "€", "GBP (£)": "£", "GHS (GH₵)": "GH₵"}
     selected_curr_name = st.selectbox("Operational Currency:", options=list(currency_lookup.keys()))
     curr_sym = currency_lookup[selected_curr_name]
     input_method = st.radio("Inbound Data Source:", ["CSV Upload (Recommended)", "Manual Entry"])
+    
     st.divider()
     ma_window = st.slider("Smoothing Window (Days):", 2, 90, 7)
     
@@ -216,15 +222,14 @@ with col_right:
 
             CONTEXT:
             - Historical Total: {curr_sym}{hist_data['y'].sum():,.2f}
-            - Forecast Total ({horizon} {freq_label}s): {curr_sym}{forecast_data['yhat'].tail(horizon).sum():,.2f}
+            - Forecast Total (next {horizon} {freq_label}s): {curr_sym}{forecast_data['yhat'].tail(horizon).sum():,.2f}
             - Data Range: {hist_data['ds'].min().date()} to {hist_data['ds'].max().date()}
 
             USER QUERY: {query}
 
             CRITICAL RULES:
-            1. DO NOT use email-style signatures (No "Best regards", No "Lead Analyst").
-            2. DO NOT use greetings like "Hello".
-            3. Be direct, conversational, and intelligent.
+            1. DO NOT use email-style signatures or greetings.
+            2. Be direct and refer specifically to project "{project_name}".
             """
             try:
                 response = ai_model.generate_content(prompt)
@@ -232,8 +237,7 @@ with col_right:
                 st.session_state.messages.append({"role": "assistant", "content": ai_text})
                 with chat_container:
                     with st.chat_message("assistant"): st.markdown(ai_text)
-            except Exception:
-                st.error("AI node is momentarily busy.")
+            except: st.error("AI node is momentarily busy.")
     else: st.info("Process data to unlock AI chat.")
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -251,8 +255,7 @@ if st.session_state.get('analyzed'):
             mode='lines+markers+text', 
             text=[f"{curr_sym}{v:,.0f}" for v in future_only['yhat']],
             textposition="top center",
-            line=dict(color='#00B0F6', width=5), 
-            marker=dict(size=12), name="Prediction"
+            line=dict(color='#00B0F6', width=5), marker=dict(size=12), name="Prediction"
         ))
         fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat_lower'], fill='tonexty', fillcolor='rgba(0,176,246,0.1)', line=dict(width=0), name="Confidence Interval"))
     
@@ -261,7 +264,7 @@ if st.session_state.get('analyzed'):
         anoms = perf[(perf['y'] > perf['yhat_upper']) | (perf['y'] < perf['yhat_lower'])]
         a1, a2, a3 = st.columns(3)
         a1.metric("Irregularities Found", len(anoms))
-        # RESTORED LABELS: Intuitive naming
+        # UPDATED LABELS: Simple & Descriptive
         a2.metric("Highest Spike", f"{curr_sym}{hist['y'].max():,.2f}")
         a3.metric("Lowest Dip", f"{curr_sym}{hist['y'].min():,.2f}")
         fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Historical Data', line=dict(width=4)))
@@ -276,12 +279,7 @@ if st.session_state.get('analyzed'):
     
     elif view == "Monthly":
         monthly = hist.set_index('ds').resample('MS')['y'].sum().reset_index()
-        fig.add_trace(go.Bar(
-            x=monthly['ds'], y=monthly['y'], 
-            text=[f"{curr_sym}{v:,.0f}" for v in monthly['y']],
-            textposition='auto',
-            marker_color="#636EFA"
-        ))
+        fig.add_trace(go.Bar(x=monthly['ds'], y=monthly['y'], text=[f"{curr_sym}{v:,.0f}" for v in monthly['y']], textposition='auto', marker_color="#636EFA"))
     
     elif view == "Weekly":
         sample_week = pd.DataFrame({'ds': pd.date_range('2024-01-01', periods=7)})
@@ -290,30 +288,15 @@ if st.session_state.get('analyzed'):
     
     elif view == "Annual":
         yearly = hist.set_index('ds').resample('YS')['y'].sum().reset_index()
-        fig.add_trace(go.Scatter(
-            x=yearly['ds'], y=yearly['y'], 
-            mode='lines+markers+text', 
-            text=[f"{curr_sym}{v:,.0f}" for v in yearly['y']],
-            textposition="top left",
-            line=dict(color="#EF553B", width=6), 
-            marker=dict(size=14)
-        ))
+        fig.add_trace(go.Scatter(x=yearly['ds'], y=yearly['y'], mode='lines+markers+text', text=[f"{curr_sym}{v:,.0f}" for v in yearly['y']], textposition="top left", line=dict(color="#EF553B", width=6), marker=dict(size=14)))
 
-    fig.update_layout(
-        template="plotly_dark",
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='#0e1117',
-        height=450, 
-        margin=dict(l=20, r=20, t=20, b=20), 
-        font=dict(size=14, color="white")
-    )
+    fig.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='#0e1117', height=450, margin=dict(l=20, r=20, t=20, b=20), font=dict(size=14, color="white"))
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- 6.1 NATURAL LANGUAGE INTERPRETATION LOGIC ---
+    # --- 6.1 ENHANCED NATURAL LANGUAGE REPORT ---
     start_val, end_val = future_only['yhat'].iloc[0], future_only['yhat'].iloc[-1]
     growth_rate = ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0
     total_vol = future_only['yhat'].sum()
-    
     growth_desc = "upward momentum" if growth_rate > 0 else "a cooling period"
     volatility = "highly consistent" if len(anoms) < 3 else "showing some unexpected volatility"
     
