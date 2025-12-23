@@ -11,10 +11,10 @@ from supabase import create_client, Client
 import streamlit.components.v1 as components
 
 # --- 0. BRANDING & UI CONFIG ---
+# Sets the browser tab title and ensures the sidebar is open by default.
 PRODUCT_NAME = "Pulse AI"
 BRAND_NAME = "Hope Tech"
 
-# FORCED: Sidebar expanded for logo visibility
 st.set_page_config(
     page_title=f"{PRODUCT_NAME} | {BRAND_NAME}", 
     layout="wide",
@@ -22,92 +22,61 @@ st.set_page_config(
 )
 
 # --- 0.2 BULLETPROOF GOOGLE ANALYTICS ---
+# Tracks user engagement safely within the Streamlit frontend.
 GA_ID = "G-2XRSHF2S9F"
-
 ga_injection = f"""
     <script>
         const script = window.parent.document.createElement('script');
         script.async = true;
         script.src = 'https://www.googletagmanager.com/gtag/js?id={GA_ID}';
         window.parent.document.head.appendChild(script);
-
         window.parent.dataLayer = window.parent.dataLayer || [];
         function gtag(){{window.parent.dataLayer.push(arguments);}}
         gtag('js', new Date());
-        gtag('config', '{GA_ID}', {{
-            'page_path': window.parent.location.pathname,
-            'debug_mode': true
-        }});
+        gtag('config', '{GA_ID}', {{ 'page_path': window.parent.location.pathname, 'debug_mode': true }});
     </script>
 """
 components.html(ga_injection, height=0, width=0)
 
-# FIX 2 & 3: FORCE DARK MODE, READABLE TEXT, AND VISIBLE BUTTONS
+# CUSTOM CSS: Styles the app with a high-end "Dark Mode" aesthetic.
 st.markdown("""
     <style>
-        /* 1. DARK HEADER */
-        header[data-testid="stHeader"] {
-            background-color: #0e1117 !important;
-        }
-
-        /* 2. MAIN BACKGROUND */
-        .stAppViewMain, .stApp, [data-testid="stAppViewContainer"] {
-            background-color: #0e1117 !important;
-            color: #ffffff !important;
-        }
-
-        /* 3. VISIBLE BUTTONS (FIX FOR SUBMIT/RESET) */
+        header[data-testid="stHeader"] { background-color: #0e1117 !important; }
+        .stAppViewMain, .stApp, [data-testid="stAppViewContainer"] { background-color: #0e1117 !important; color: #ffffff !important; }
+        
+        /* Stylized Buttons */
         button[kind="primary"], button[kind="secondary"], .stButton > button, div[data-testid="stForm"] button {
             background-color: #1a1c23 !important;
             color: #ffffff !important;
             border: 2px solid #00B0F6 !important;
             font-weight: bold !important;
-            opacity: 1 !important;
-            display: inline-flex !important;
         }
-        
-        button:hover {
-            background-color: #00B0F6 !important;
-            color: #0e1117 !important;
-            box-shadow: 0 0 15px #00B0F6 !important;
-        }
+        button:hover { background-color: #00B0F6 !important; color: #0e1117 !important; box-shadow: 0 0 15px #00B0F6 !important; }
 
-        /* 4. HEADERS & TEXT */
-        h1, h2, h3, h4, h5, h6, p, label, .stMarkdown {
-            color: #ffffff !important;
-            opacity: 1 !important;
-        }
+        h1, h2, h3, h4, h5, h6, p, label, .stMarkdown { color: #ffffff !important; opacity: 1 !important; }
+        [data-testid="stSidebar"] { background-color: #1a1c23 !important; border-right: 1px solid rgba(0, 176, 246, 0.2) !important; }
 
-        /* 5. SIDEBAR */
-        [data-testid="stSidebar"] {
-            background-color: #1a1c23 !important;
-            border-right: 1px solid rgba(0, 176, 246, 0.2) !important;
-        }
-
-        /* 6. CARDS & BARS */
         .support-bar {
             background: linear-gradient(90deg, #00B0F6, #00FFCC);
             padding: 12px; border-radius: 8px; text-align: center;
             margin-bottom: 25px; color: #0e1117 !important; font-weight: bold;
         }
-        .glass-card { 
-            background: rgba(255, 255, 255, 0.05); 
-            border-radius: 12px; padding: 20px; 
-            border: 1px solid rgba(0, 176, 246, 0.3); 
-        }
+        .glass-card { background: rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 20px; border: 1px solid rgba(0, 176, 246, 0.3); }
         .main-title { font-size: 42px; font-weight: bold; color: #00B0F6 !important; }
         .interpretation-box { background: rgba(0, 176, 246, 0.1); padding: 25px; border-radius: 12px; border-left: 5px solid #00B0F6; margin-top: 20px; }
     </style>
     """, unsafe_allow_html=True)
 
 # --- 1. SYSTEM INITIALIZATION ---
-
+# Connects the app to external services (Supabase Database & Google Gemini AI).
 def init_connections():
     sb, ai = None, None
     try:
+        # Connect to Supabase for feedback storage
         if "SUPABASE_URL" in st.secrets and "SUPABASE_KEY" in st.secrets:
             sb = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
         
+        # Initialize Google Gemini AI model
         if "GOOGLE_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
             available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
@@ -116,13 +85,13 @@ def init_connections():
                 ai = genai.GenerativeModel(selected_model)
                 st.sidebar.success(f"⚡ AI Engine Linked: {selected_model.split('/')[-1]}")
     except Exception as e:
-        st.sidebar.warning("System restricted: AI connectivity is currently limited.")
+        st.sidebar.warning("System restricted: AI connectivity limited.")
     return sb, ai
 
 supabase, ai_model = init_connections()
 
 # --- 2. FORECASTING & HEALTH TOOLS ---
-
+# Uses Meta's Prophet model for predictive analytics.
 @st.cache_resource
 def run_forecast_model(df, periods, freq):
     model = Prophet(yearly_seasonality=True, weekly_seasonality=True, daily_seasonality=False)
@@ -131,6 +100,7 @@ def run_forecast_model(df, periods, freq):
     forecast = model.predict(future)
     return forecast, model
 
+# Data Quality Check: ensures the CSV has the right info before processing.
 def perform_health_check(df, date_col, val_col):
     issues = []
     if df[date_col].isnull().any(): issues.append("Missing dates detected.")
@@ -138,8 +108,7 @@ def perform_health_check(df, date_col, val_col):
     if len(df) < 2: issues.append("Insufficient data for forecasting.")
     return issues
 
-# --- 3. UI LAYOUT & BRANDING ---
-
+# --- 3. UI LAYOUT & SIDEBAR ---
 if os.path.exists("assets/Hope tech 2.png"):
     st.image("assets/Hope tech 2.png", width=120)
 
@@ -149,14 +118,12 @@ with st.sidebar:
     logo_path = "assets/Hope tech 2.png"
     if os.path.exists(logo_path):
         col1, col2, col3 = st.columns([1, 3, 1])
-        with col2:
-            st.image(logo_path, use_container_width=True)
+        with col2: st.image(logo_path, use_container_width=True)
     else:
         st.markdown(f"## 🛡️ {BRAND_NAME}")
     
     st.divider()
     st.header("Project Configuration")
-    
     project_name = st.text_input("Project Namespace:", value="Your Project Name")
     st.caption("💡 *Please remember to name your specific project above.*")
     
@@ -165,34 +132,30 @@ with st.sidebar:
     curr_sym = currency_lookup[selected_curr_name]
     
     input_method = st.radio("Inbound Data Source:", ["CSV Upload (Recommended)", "Manual Entry"])
-    
     st.divider()
     ma_window = st.slider("Smoothing Window (Days):", 2, 90, 7)
     
     if st.button("🗑️ Reset All Cache & Chat"):
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
+        for key in list(st.session_state.keys()): del st.session_state[key]
         st.rerun()
 
     with st.expander("🔒 Developer Access"):
         admin_key = st.text_input("Security Key", type="password")
         is_admin = (admin_key == "Ibiene2003#")
 
+# ADMIN PANEL: Only visible with correct credentials.
 if is_admin:
     if supabase:
         try:
             fb = supabase.table("feedback").select("*").execute()
             st.write("### Internal Feedback Log")
             st.dataframe(pd.DataFrame(fb.data))
-        except:
-            st.error("Could not fetch logs.")
+        except: st.error("Could not fetch logs.")
     if st.button("End Session"): st.rerun()
     st.stop()
 
 # --- 4. DATA PROCESSING ---
-
 st.markdown(f'<p class="main-title">{PRODUCT_NAME} Analytics Engine</p>', unsafe_allow_html=True)
-
 col_left, col_right = st.columns([2.2, 1.3])
 
 with col_left:
@@ -244,18 +207,16 @@ with col_left:
             except Exception as e: st.error(f"Computation Error: {e}")
 
 # --- 5. CHAT-STYLE AI ASSISTANT ---
+# This assistant uses Gemini Flash 1.5 to explain the data.
 with col_right:
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
     st.subheader("🤖 Pulse AI Analyst")
-
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+    if "messages" not in st.session_state: st.session_state.messages = []
 
     chat_container = st.container(height=400)
     with chat_container:
         for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
+            with st.chat_message(message["role"]): st.markdown(message["content"])
 
     if st.session_state.get('analyzed') and ai_model:
         if query := st.chat_input("Ask about your projections..."):
@@ -266,38 +227,31 @@ with col_right:
             hist_data = st.session_state['history']
             forecast_data = st.session_state['forecast']
             
-            # FIX 1: Explicitly Instructing AI to focus on Project Name over Brand Name
+            # Context-rich prompt so the AI "knows" what it's looking at.
             prompt = f"""
-            You are a lead analyst for {BRAND_NAME}.
-            The user is currently analyzing a specific project called: {project_name}.
-            
-            CRITICAL INSTRUCTION: Always address the findings as being for the project "{project_name}".
+            You are a lead analyst for {BRAND_NAME}. Project: {project_name}.
             
             CONTEXT:
-            - Project Name: {project_name}
             - Historical Total: {curr_sym}{hist_data['y'].sum():,.2f}
-            - Forecast Total (next {horizon} {freq_label}s): {curr_sym}{forecast_data['yhat'].tail(horizon).sum():,.2f}
+            - Forecast Total ({horizon} {freq_label}s): {curr_sym}{forecast_data['yhat'].tail(horizon).sum():,.2f}
             - Data Range: {hist_data['ds'].min().date()} to {hist_data['ds'].max().date()}
             
             USER QUERY: {query}
             
-            Answer professionally. Use only text.
+            Respond professionally and address the project name specifically.
             """
-
             try:
                 response = ai_model.generate_content(prompt)
                 ai_text = response.text
                 st.session_state.messages.append({"role": "assistant", "content": ai_text})
                 with chat_container:
                     with st.chat_message("assistant"): st.markdown(ai_text)
-            except:
-                st.error("AI node is momentarily busy.")
-    else:
-        st.info("Process data to unlock AI chat.")
+            except: st.error("AI node is momentarily busy.")
+    else: st.info("Process data to unlock AI chat.")
     st.markdown('</div>', unsafe_allow_html=True)
 
 # --- 6. VISUALIZATION DASHBOARD ---
-
+# Renders the interactive Plotly charts.
 if st.session_state.get('analyzed'):
     hist, fcst, model = st.session_state['history'], st.session_state['forecast'], st.session_state['model']
     future_only = fcst.tail(horizon)
@@ -305,7 +259,6 @@ if st.session_state.get('analyzed'):
     view = st.radio("Dashboard Perspective:", ["Forecast", "Anomalies", "Accuracy", "Monthly", "Weekly", "Annual"], horizontal=True)
     fig = go.Figure()
 
-    # FIX 2: BOLDER LINES AND MARKERS
     if view == "Forecast":
         fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat'], mode='lines+markers', line=dict(color='#00B0F6', width=5), marker=dict(size=12), name="Prediction"))
         fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat_lower'], fill='tonexty', fillcolor='rgba(0,176,246,0.1)', line=dict(width=0), name="Confidence Interval"))
@@ -316,7 +269,7 @@ if st.session_state.get('analyzed'):
         a1.metric("Irregularities", len(anoms))
         a2.metric("Project Peak", f"{curr_sym}{hist['y'].max():,.2f}")
         a3.metric("Project Floor", f"{curr_sym}{hist['y'].min():,.2f}")
-        fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Historical Data', line=dict(width=4)))
+        fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Historical', line=dict(width=4)))
         fig.add_trace(go.Scatter(x=anoms.index, y=anoms['y'], mode='markers', marker=dict(color='red', size=15, symbol='x'), name='Anomaly'))
     elif view == "Accuracy":
         hist_preds = fcst[fcst['ds'].isin(hist['ds'])]
@@ -342,14 +295,12 @@ if st.session_state.get('analyzed'):
     growth_rate = ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0
     st.markdown(f"""
     <div class="interpretation-box">
-    <b>Report:</b> {project_name} is projected to generate <b>{curr_sym}{future_only['yhat'].sum():,.2f}</b> in total volume. 
-    <br><br>
-    <b>Strategic Outlook:</b> Currently trending at a <b>{growth_rate:.1f}% {"Growth" if growth_rate > 0 else "Decline"}</b> for the {project_name} project. 
+    <b>Report:</b> {project_name} is projected to generate <b>{curr_sym}{future_only['yhat'].sum():,.2f}</b>. <br><br>
+    <b>Strategic Outlook:</b> Currently trending at a <b>{growth_rate:.1f}% {"Growth" if growth_rate > 0 else "Decline"}</b>.
     </div>
     """, unsafe_allow_html=True)
 
 # --- 7. FOOTER & FEEDBACK ---
-
 st.markdown('<div class="footer-section">', unsafe_allow_html=True)
 f_left, f_right = st.columns(2)
 with f_left:
@@ -359,7 +310,6 @@ with f_left:
     st.markdown("[🔗 Digital Portfolio](https://linktr.ee/MoniviHope)")
 with f_right:
     st.markdown("### ✉️ Support Gateway")
-    # FORM INJECTION FOR STYLING FIX
     with st.form("feedback_system", clear_on_submit=True):
         email_in = st.text_input("Contact Email")
         msg_in = st.text_area("Observations / Request")
