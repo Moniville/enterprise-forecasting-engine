@@ -11,7 +11,6 @@ from supabase import create_client, Client
 import streamlit.components.v1 as components
 
 # --- 0. BRANDING & UI CONFIG ---
-# Sets the browser tab title and ensures the sidebar is open by default.
 PRODUCT_NAME = "Pulse AI"
 BRAND_NAME = "Hope Tech"
 
@@ -21,8 +20,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 0.2 BULLETPROOF GOOGLE ANALYTICS ---
-# Tracks user engagement safely within the Streamlit frontend.
+# --- 0.2 GOOGLE ANALYTICS ---
 GA_ID = "G-2XRSHF2S9F"
 ga_injection = f"""
     <script>
@@ -38,13 +36,12 @@ ga_injection = f"""
 """
 components.html(ga_injection, height=0, width=0)
 
-# CUSTOM CSS: Styles the app with a high-end "Dark Mode" aesthetic.
+# CUSTOM CSS: Unified Dark Theme
 st.markdown("""
     <style>
         header[data-testid="stHeader"] { background-color: #0e1117 !important; }
         .stAppViewMain, .stApp, [data-testid="stAppViewContainer"] { background-color: #0e1117 !important; color: #ffffff !important; }
         
-        /* Stylized Buttons */
         button[kind="primary"], button[kind="secondary"], .stButton > button, div[data-testid="stForm"] button {
             background-color: #1a1c23 !important;
             color: #ffffff !important;
@@ -68,30 +65,22 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # --- 1. SYSTEM INITIALIZATION ---
-# Connects the app to external services (Supabase Database & Google Gemini AI).
 def init_connections():
     sb, ai = None, None
     try:
-        # Connect to Supabase for feedback storage
         if "SUPABASE_URL" in st.secrets and "SUPABASE_KEY" in st.secrets:
             sb = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-        
-        # Initialize Google Gemini AI model
         if "GOOGLE_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            if available_models:
-                selected_model = next((m for m in available_models if "1.5-flash" in m), available_models[0])
-                ai = genai.GenerativeModel(selected_model)
-                st.sidebar.success(f"⚡ AI Engine Linked: {selected_model.split('/')[-1]}")
-    except Exception as e:
+            ai = genai.GenerativeModel("gemini-1.5-flash")
+            st.sidebar.success("⚡ AI Engine Linked: Gemini 1.5 Flash")
+    except Exception:
         st.sidebar.warning("System restricted: AI connectivity limited.")
     return sb, ai
 
 supabase, ai_model = init_connections()
 
-# --- 2. FORECASTING & HEALTH TOOLS ---
-# Uses Meta's Prophet model for predictive analytics.
+# --- 2. ANALYTICS TOOLS ---
 @st.cache_resource
 def run_forecast_model(df, periods, freq):
     model = Prophet(yearly_seasonality=True, weekly_seasonality=True, daily_seasonality=False)
@@ -100,7 +89,6 @@ def run_forecast_model(df, periods, freq):
     forecast = model.predict(future)
     return forecast, model
 
-# Data Quality Check: ensures the CSV has the right info before processing.
 def perform_health_check(df, date_col, val_col):
     issues = []
     if df[date_col].isnull().any(): issues.append("Missing dates detected.")
@@ -108,7 +96,7 @@ def perform_health_check(df, date_col, val_col):
     if len(df) < 2: issues.append("Insufficient data for forecasting.")
     return issues
 
-# --- 3. UI LAYOUT & SIDEBAR ---
+# --- 3. UI LAYOUT ---
 if os.path.exists("assets/Hope tech 2.png"):
     st.image("assets/Hope tech 2.png", width=120)
 
@@ -119,18 +107,14 @@ with st.sidebar:
     if os.path.exists(logo_path):
         col1, col2, col3 = st.columns([1, 3, 1])
         with col2: st.image(logo_path, use_container_width=True)
-    else:
-        st.markdown(f"## 🛡️ {BRAND_NAME}")
+    else: st.markdown(f"## 🛡️ {BRAND_NAME}")
     
     st.divider()
     st.header("Project Configuration")
     project_name = st.text_input("Project Namespace:", value="Your Project Name")
-    st.caption("💡 *Please remember to name your specific project above.*")
-    
     currency_lookup = {"USD ($)": "$", "NGN (₦)": "₦", "EUR (€)": "€", "GBP (£)": "£", "GHS (GH₵)": "GH₵"}
     selected_curr_name = st.selectbox("Operational Currency:", options=list(currency_lookup.keys()))
     curr_sym = currency_lookup[selected_curr_name]
-    
     input_method = st.radio("Inbound Data Source:", ["CSV Upload (Recommended)", "Manual Entry"])
     st.divider()
     ma_window = st.slider("Smoothing Window (Days):", 2, 90, 7)
@@ -143,7 +127,6 @@ with st.sidebar:
         admin_key = st.text_input("Security Key", type="password")
         is_admin = (admin_key == "Ibiene2003#")
 
-# ADMIN PANEL: Only visible with correct credentials.
 if is_admin:
     if supabase:
         try:
@@ -207,7 +190,6 @@ with col_left:
             except Exception as e: st.error(f"Computation Error: {e}")
 
 # --- 5. CHAT-STYLE AI ASSISTANT ---
-# This assistant uses Gemini Flash 1.5 to explain the data.
 with col_right:
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
     st.subheader("🤖 Pulse AI Analyst")
@@ -227,18 +209,21 @@ with col_right:
             hist_data = st.session_state['history']
             forecast_data = st.session_state['forecast']
             
-            # Context-rich prompt so the AI "knows" what it's looking at.
             prompt = f"""
-            You are a lead analyst for {BRAND_NAME}. Project: {project_name}.
-            
+            Identify as a conversational AI analyst for {BRAND_NAME}. 
+            The project being discussed is: {project_name}.
+
             CONTEXT:
             - Historical Total: {curr_sym}{hist_data['y'].sum():,.2f}
             - Forecast Total ({horizon} {freq_label}s): {curr_sym}{forecast_data['yhat'].tail(horizon).sum():,.2f}
             - Data Range: {hist_data['ds'].min().date()} to {hist_data['ds'].max().date()}
-            
+
             USER QUERY: {query}
-            
-            Respond professionally and address the project name specifically.
+
+            CRITICAL RULES:
+            1. DO NOT use email-style signatures (e.g., No "Best regards", No "Lead Analyst").
+            2. DO NOT use "Hello" or greetings at the start. 
+            3. Be direct, conversational, and intelligent.
             """
             try:
                 response = ai_model.generate_content(prompt)
@@ -246,12 +231,12 @@ with col_right:
                 st.session_state.messages.append({"role": "assistant", "content": ai_text})
                 with chat_container:
                     with st.chat_message("assistant"): st.markdown(ai_text)
-            except: st.error("AI node is momentarily busy.")
+            except Exception:
+                st.error("AI node is momentarily busy.")
     else: st.info("Process data to unlock AI chat.")
     st.markdown('</div>', unsafe_allow_html=True)
 
 # --- 6. VISUALIZATION DASHBOARD ---
-# Renders the interactive Plotly charts.
 if st.session_state.get('analyzed'):
     hist, fcst, model = st.session_state['history'], st.session_state['forecast'], st.session_state['model']
     future_only = fcst.tail(horizon)
@@ -288,17 +273,19 @@ if st.session_state.get('analyzed'):
         yearly = hist.set_index('ds').resample('YS')['y'].sum().reset_index()
         fig.add_trace(go.Scatter(x=yearly['ds'], y=yearly['y'], mode='lines+markers', line=dict(color="#EF553B", width=6), marker=dict(size=14)))
 
-    fig.update_layout(template="plotly_dark", height=450, margin=dict(l=20, r=20, t=20, b=20), font=dict(size=14, color="white"))
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='#0e1117',
+        height=450, 
+        margin=dict(l=20, r=20, t=20, b=20), 
+        font=dict(size=14, color="white")
+    )
     st.plotly_chart(fig, use_container_width=True)
 
     start_val, end_val = future_only['yhat'].iloc[0], future_only['yhat'].iloc[-1]
     growth_rate = ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0
-    st.markdown(f"""
-    <div class="interpretation-box">
-    <b>Report:</b> {project_name} is projected to generate <b>{curr_sym}{future_only['yhat'].sum():,.2f}</b>. <br><br>
-    <b>Strategic Outlook:</b> Currently trending at a <b>{growth_rate:.1f}% {"Growth" if growth_rate > 0 else "Decline"}</b>.
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(f'<div class="interpretation-box"><b>Strategic Report:</b> {project_name} is projected to generate <b>{curr_sym}{future_only["yhat"].sum():,.2f}</b> in total volume. <br> Currently trending at a <b>{growth_rate:.1f}% {"Growth" if growth_rate > 0 else "Decline"}</b>.</div>', unsafe_allow_html=True)
 
 # --- 7. FOOTER & FEEDBACK ---
 st.markdown('<div class="footer-section">', unsafe_allow_html=True)
