@@ -14,7 +14,7 @@ import streamlit.components.v1 as components
 PRODUCT_NAME = "Pulse AI"
 BRAND_NAME = "Hope Tech"
 
-# FIX 1: Forced sidebar state so logo is always seen first
+# FORCED: Sidebar expanded for logo visibility
 st.set_page_config(
     page_title=f"{PRODUCT_NAME} | {BRAND_NAME}", 
     layout="wide",
@@ -38,66 +38,65 @@ ga_injection = f"""
             'page_path': window.parent.location.pathname,
             'debug_mode': true
         }});
-        console.log("Pulse AI: Google Analytics Injected to Parent");
     </script>
 """
 components.html(ga_injection, height=0, width=0)
 
-# FIX 2: FORCE DARK MODE & READABLE TEXT
-# This overrides the 'white background' and 'faint text' problems.
+# FIX 2 & 3: FORCE DARK MODE, READABLE TEXT, AND VISIBLE BUTTONS
 st.markdown("""
     <style>
-        /* 1. FORCE THE TOP HEADER TO BE DARK */
+        /* 1. DARK HEADER */
         header[data-testid="stHeader"] {
             background-color: #0e1117 !important;
         }
 
-        /* 2. MAIN APP & CANVAS BACKGROUND */
+        /* 2. MAIN BACKGROUND */
         .stAppViewMain, .stApp, [data-testid="stAppViewContainer"] {
             background-color: #0e1117 !important;
             color: #ffffff !important;
         }
 
-        /* 3. FIX THE "INVISIBLE" BUTTONS (Submit & Reset) */
-        /* This makes the buttons dark with a cyan border so you can see them */
-        button[kind="primary"], button[kind="secondary"], .stButton > button {
+        /* 3. VISIBLE BUTTONS (FIX FOR SUBMIT/RESET) */
+        button[kind="primary"], button[kind="secondary"], .stButton > button, div[data-testid="stForm"] button {
             background-color: #1a1c23 !important;
             color: #ffffff !important;
-            border: 1px solid #00B0F6 !important;
-            transition: 0.3s ease all;
+            border: 2px solid #00B0F6 !important;
+            font-weight: bold !important;
+            opacity: 1 !important;
+            display: inline-flex !important;
         }
         
-        /* Hover state: Makes them glow when you touch them */
         button:hover {
             background-color: #00B0F6 !important;
             color: #0e1117 !important;
-            box-shadow: 0 0 10px #00B0F6 !important;
+            box-shadow: 0 0 15px #00B0F6 !important;
         }
 
-        /* 4. FIX FAINT TEXT & HEADERS */
+        /* 4. HEADERS & TEXT */
         h1, h2, h3, h4, h5, h6, p, label, .stMarkdown {
             color: #ffffff !important;
             opacity: 1 !important;
         }
 
-        /* 5. SIDEBAR BRANDING AREA */
+        /* 5. SIDEBAR */
         [data-testid="stSidebar"] {
             background-color: #1a1c23 !important;
             border-right: 1px solid rgba(0, 176, 246, 0.2) !important;
         }
 
-        /* 6. CUSTOM BRAND CARDS */
+        /* 6. CARDS & BARS */
         .support-bar {
             background: linear-gradient(90deg, #00B0F6, #00FFCC);
             padding: 12px; border-radius: 8px; text-align: center;
             margin-bottom: 25px; color: #0e1117 !important; font-weight: bold;
         }
         .glass-card { 
-            background: rgba(255, 255, 255, 0.03); 
+            background: rgba(255, 255, 255, 0.05); 
             border-radius: 12px; padding: 20px; 
             border: 1px solid rgba(0, 176, 246, 0.3); 
         }
         .main-title { font-size: 42px; font-weight: bold; color: #00B0F6 !important; }
+        .interpretation-box { background: rgba(0, 176, 246, 0.1); padding: 25px; border-radius: 12px; border-left: 5px solid #00B0F6; margin-top: 20px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -141,13 +140,11 @@ def perform_health_check(df, date_col, val_col):
 
 # --- 3. UI LAYOUT & BRANDING ---
 
-# TOP BRANDING
 if os.path.exists("assets/Hope tech 2.png"):
     st.image("assets/Hope tech 2.png", width=120)
 
 st.markdown(f'<div class="support-bar">🚀 <b>Support Zenith Innovation:</b> Help us scale {PRODUCT_NAME}. <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline; margin-left: 10px;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
 
-# Sidebar Configuration
 with st.sidebar:
     logo_path = "assets/Hope tech 2.png"
     if os.path.exists(logo_path):
@@ -269,16 +266,22 @@ with col_right:
             hist_data = st.session_state['history']
             forecast_data = st.session_state['forecast']
             
+            # FIX 1: Explicitly Instructing AI to focus on Project Name over Brand Name
             prompt = f"""
-            ANALYST CONTEXT for {project_name}:
+            You are a lead analyst for {BRAND_NAME}.
+            The user is currently analyzing a specific project called: {project_name}.
+            
+            CRITICAL INSTRUCTION: Always address the findings as being for the project "{project_name}".
+            
+            CONTEXT:
+            - Project Name: {project_name}
             - Historical Total: {curr_sym}{hist_data['y'].sum():,.2f}
             - Forecast Total (next {horizon} {freq_label}s): {curr_sym}{forecast_data['yhat'].tail(horizon).sum():,.2f}
             - Data Range: {hist_data['ds'].min().date()} to {hist_data['ds'].max().date()}
             
             USER QUERY: {query}
             
-            INSTRUCTION: Answer as a professional business analyst for {BRAND_NAME}. Do NOT output JSON, code, or charts. 
-            Use only text.
+            Answer professionally. Use only text.
             """
 
             try:
@@ -302,8 +305,9 @@ if st.session_state.get('analyzed'):
     view = st.radio("Dashboard Perspective:", ["Forecast", "Anomalies", "Accuracy", "Monthly", "Weekly", "Annual"], horizontal=True)
     fig = go.Figure()
 
+    # FIX 2: BOLDER LINES AND MARKERS
     if view == "Forecast":
-        fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat'], mode='lines+markers', line=dict(color='#00B0F6', width=4), name="Prediction"))
+        fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat'], mode='lines+markers', line=dict(color='#00B0F6', width=5), marker=dict(size=12), name="Prediction"))
         fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat_lower'], fill='tonexty', fillcolor='rgba(0,176,246,0.1)', line=dict(width=0), name="Confidence Interval"))
     elif view == "Anomalies":
         perf = fcst.set_index('ds')[['yhat_lower', 'yhat_upper']].join(hist.set_index('ds'))
@@ -312,14 +316,14 @@ if st.session_state.get('analyzed'):
         a1.metric("Irregularities", len(anoms))
         a2.metric("Project Peak", f"{curr_sym}{hist['y'].max():,.2f}")
         a3.metric("Project Floor", f"{curr_sym}{hist['y'].min():,.2f}")
-        fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Historical Data'))
-        fig.add_trace(go.Scatter(x=anoms.index, y=anoms['y'], mode='markers', marker=dict(color='red', size=10), name='Anomaly'))
+        fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Historical Data', line=dict(width=4)))
+        fig.add_trace(go.Scatter(x=anoms.index, y=anoms['y'], mode='markers', marker=dict(color='red', size=15, symbol='x'), name='Anomaly'))
     elif view == "Accuracy":
         hist_preds = fcst[fcst['ds'].isin(hist['ds'])]
         hist['ma'] = hist['y'].rolling(window=ma_window).mean()
-        fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Actual', opacity=0.3))
-        fig.add_trace(go.Scatter(x=hist['ds'], y=hist['ma'], name='Trend', line=dict(color='#00FFCC')))
-        fig.add_trace(go.Scatter(x=hist_preds['ds'], y=hist_preds['yhat'], name='AI Backtest', line=dict(dash='dot', color='#00B0F6')))
+        fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Actual', opacity=0.4, line=dict(width=3)))
+        fig.add_trace(go.Scatter(x=hist['ds'], y=hist['ma'], name='Trend', line=dict(color='#00FFCC', width=5)))
+        fig.add_trace(go.Scatter(x=hist_preds['ds'], y=hist_preds['yhat'], name='AI Backtest', line=dict(dash='dot', color='#00B0F6', width=4)))
     elif view == "Monthly":
         monthly = hist.set_index('ds').resample('MS')['y'].sum().reset_index()
         fig.add_trace(go.Bar(x=monthly['ds'], y=monthly['y'], marker_color="#636EFA"))
@@ -329,9 +333,9 @@ if st.session_state.get('analyzed'):
         fig.add_trace(go.Bar(x=['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], y=weekly_comp['weekly'], marker_color='#00FFCC'))
     elif view == "Annual":
         yearly = hist.set_index('ds').resample('YS')['y'].sum().reset_index()
-        fig.add_trace(go.Scatter(x=yearly['ds'], y=yearly['y'], mode='lines+markers', line=dict(color="#EF553B")))
+        fig.add_trace(go.Scatter(x=yearly['ds'], y=yearly['y'], mode='lines+markers', line=dict(color="#EF553B", width=6), marker=dict(size=14)))
 
-    fig.update_layout(template="plotly_dark", height=450, margin=dict(l=20, r=20, t=20, b=20))
+    fig.update_layout(template="plotly_dark", height=450, margin=dict(l=20, r=20, t=20, b=20), font=dict(size=14, color="white"))
     st.plotly_chart(fig, use_container_width=True)
 
     start_val, end_val = future_only['yhat'].iloc[0], future_only['yhat'].iloc[-1]
@@ -340,7 +344,7 @@ if st.session_state.get('analyzed'):
     <div class="interpretation-box">
     <b>Report:</b> {project_name} is projected to generate <b>{curr_sym}{future_only['yhat'].sum():,.2f}</b> in total volume. 
     <br><br>
-    <b>Strategic Outlook:</b> Currently trending at a <b>{growth_rate:.1f}% {"Growth" if growth_rate > 0 else "Decline"}</b>. 
+    <b>Strategic Outlook:</b> Currently trending at a <b>{growth_rate:.1f}% {"Growth" if growth_rate > 0 else "Decline"}</b> for the {project_name} project. 
     </div>
     """, unsafe_allow_html=True)
 
@@ -355,6 +359,7 @@ with f_left:
     st.markdown("[🔗 Digital Portfolio](https://linktr.ee/MoniviHope)")
 with f_right:
     st.markdown("### ✉️ Support Gateway")
+    # FORM INJECTION FOR STYLING FIX
     with st.form("feedback_system", clear_on_submit=True):
         email_in = st.text_input("Contact Email")
         msg_in = st.text_area("Observations / Request")
@@ -368,4 +373,3 @@ with f_right:
 
 st.markdown(f'<div class="support-bar">💖 <b>Empower Hope Tech:</b> Your support drives our innovation. <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline; margin-left: 10px;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
-
