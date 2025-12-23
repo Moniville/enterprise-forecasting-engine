@@ -74,13 +74,9 @@ def perform_health_check(df, date_col, val_col):
 
 # --- 3. UI LAYOUT & BRANDING ---
 
-# TOP BRANDING (Above everything else)
-logo_col1, logo_col2 = st.columns([0.1, 0.9])
-with logo_col1:
-    if os.path.exists("assets/Hope tech 2.png"):
-        st.image("assets/Hope tech 2.png", width=80)
-with logo_col2:
-    st.markdown(f"## {BRAND_NAME}")
+# TOP BRANDING (Logo Only)
+if os.path.exists("assets/Hope tech 2.png"):
+    st.image("assets/Hope tech 2.png", width=120)
 
 # Top Support Banner
 st.markdown(f'<div class="support-bar">🚀 <b>Support Zenith Innovation:</b> Help us scale {PRODUCT_NAME}. <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline; margin-left: 10px;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
@@ -97,7 +93,10 @@ with st.sidebar:
     
     st.divider()
     st.header("Project Configuration")
-    project_name = st.text_input("Project Namespace:", value="Zenith Ecommerce")
+    
+    # Updated Project Namespace with Placeholder and Reminder
+    project_name = st.text_input("Project Namespace:", value="Your Project Name")
+    st.caption("💡 *Please remember to name your specific project above.*")
     
     currency_lookup = {"USD ($)": "$", "NGN (₦)": "₦", "EUR (€)": "€", "GBP (£)": "£", "GHS (GH₵)": "GH₵"}
     selected_curr_name = st.selectbox("Operational Currency:", options=list(currency_lookup.keys()))
