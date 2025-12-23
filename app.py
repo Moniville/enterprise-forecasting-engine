@@ -114,7 +114,6 @@ with st.sidebar:
     st.divider()
     st.header("Project Configuration")
     
-    # RESTORED: Original Namespace logic and Reminder caption
     project_name = st.text_input("Project Namespace:", value="Your Project Name")
     st.caption("💡 *Please remember to name your specific project above.*")
     
@@ -222,14 +221,10 @@ with col_right:
 
             CONTEXT:
             - Historical Total: {curr_sym}{hist_data['y'].sum():,.2f}
-            - Forecast Total (next {horizon} {freq_label}s): {curr_sym}{forecast_data['yhat'].tail(horizon).sum():,.2f}
+            - Forecast Total: {curr_sym}{forecast_data['yhat'].tail(horizon).sum():,.2f}
             - Data Range: {hist_data['ds'].min().date()} to {hist_data['ds'].max().date()}
 
-            USER QUERY: {query}
-
-            CRITICAL RULES:
-            1. DO NOT use email-style signatures or greetings.
-            2. Be direct and refer specifically to project "{project_name}".
+            Answer professionally. Use only text. No greetings.
             """
             try:
                 response = ai_model.generate_content(prompt)
@@ -246,6 +241,10 @@ if st.session_state.get('analyzed'):
     hist, fcst, model = st.session_state['history'], st.session_state['forecast'], st.session_state['model']
     future_only = fcst.tail(horizon)
     
+    # --- CRITICAL FIX: PRE-CALCULATE ANOMALIES FOR ALL VIEWS ---
+    perf = fcst.set_index('ds')[['yhat_lower', 'yhat_upper']].join(hist.set_index('ds'))
+    anoms = perf[(perf['y'] > perf['yhat_upper']) | (perf['y'] < perf['yhat_lower'])]
+    
     view = st.radio("Dashboard Perspective:", ["Forecast", "Anomalies", "Accuracy", "Monthly", "Weekly", "Annual"], horizontal=True)
     fig = go.Figure()
 
@@ -260,11 +259,8 @@ if st.session_state.get('analyzed'):
         fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat_lower'], fill='tonexty', fillcolor='rgba(0,176,246,0.1)', line=dict(width=0), name="Confidence Interval"))
     
     elif view == "Anomalies":
-        perf = fcst.set_index('ds')[['yhat_lower', 'yhat_upper']].join(hist.set_index('ds'))
-        anoms = perf[(perf['y'] > perf['yhat_upper']) | (perf['y'] < perf['yhat_lower'])]
         a1, a2, a3 = st.columns(3)
         a1.metric("Irregularities Found", len(anoms))
-        # UPDATED LABELS: Simple & Descriptive
         a2.metric("Highest Spike", f"{curr_sym}{hist['y'].max():,.2f}")
         a3.metric("Lowest Dip", f"{curr_sym}{hist['y'].min():,.2f}")
         fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Historical Data', line=dict(width=4)))
