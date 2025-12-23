@@ -14,12 +14,16 @@ import streamlit.components.v1 as components
 PRODUCT_NAME = "Pulse AI"
 BRAND_NAME = "Hope Tech"
 
-st.set_page_config(page_title=f"{PRODUCT_NAME} | {BRAND_NAME}", layout="wide")
+# FIX 1: Forced sidebar state so logo is always seen first
+st.set_page_config(
+    page_title=f"{PRODUCT_NAME} | {BRAND_NAME}", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 # --- 0.2 BULLETPROOF GOOGLE ANALYTICS ---
 GA_ID = "G-2XRSHF2S9F"
 
-# This script injects the tracker into the MAIN window, not just the iframe
 ga_injection = f"""
     <script>
         const script = window.parent.document.createElement('script');
@@ -37,38 +41,50 @@ ga_injection = f"""
         console.log("Pulse AI: Google Analytics Injected to Parent");
     </script>
 """
-import streamlit.components.v1 as components
 components.html(ga_injection, height=0, width=0)
 
-# Professional Dark-Mode Styling (FORCED)
+# FIX 2: FORCE DARK MODE & READABLE TEXT
+# This overrides the 'white background' and 'faint text' problems.
 st.markdown("""
     <style>
-        /* 1. Force the absolute background of the entire app */
-        .stAppViewMain, .stApp {
+        /* Force the entire app background and text color */
+        html, body, [data-testid="stAppViewContainer"], .stApp {
             background-color: #0e1117 !important;
             color: #ffffff !important;
         }
-        
-        /* 2. Style the sidebar to match */
-        [data-testid="stSidebar"] {
-            background-color: #1a1c23 !important;
+
+        /* Fix faint headers and standard text */
+        h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {
+            color: #ffffff !important;
+            opacity: 1 !important;
         }
 
-        /* 3. Fix text visibility in input boxes */
-        input, textarea, select {
+        /* Force Sidebar Darkness */
+        [data-testid="stSidebar"] {
+            background-color: #1a1c23 !important;
+            border-right: 1px solid rgba(255,255,255,0.1) !important;
+        }
+
+        /* Fix faintness in input boxes and dropdowns */
+        input, textarea, [data-baseweb="select"] {
             color: #ffffff !important;
             background-color: #262730 !important;
         }
 
-        /* Your existing support bar & cards */
+        /* Custom Brand Elements */
         .support-bar {
             background: linear-gradient(90deg, #00B0F6, #00FFCC);
             padding: 12px; border-radius: 8px; text-align: center;
-            margin-bottom: 25px; color: #0e1117; font-weight: bold; font-size: 16px;
+            margin-bottom: 25px; color: #0e1117 !important; font-weight: bold; font-size: 16px;
         }
-        .glass-card { background: rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 20px; border: 1px solid rgba(255, 255, 255, 0.1); margin-bottom: 20px; }
-        .main-title { font-size: 42px; font-weight: bold; color: #00B0F6; margin-top: 0px; margin-bottom: 5px; }
-        .interpretation-box { background: rgba(255, 255, 255, 0.05); padding: 25px; border-radius: 12px; border-left: 5px solid #00B0F6; margin-top: 20px; }
+        .glass-card { 
+            background: rgba(255, 255, 255, 0.05); 
+            border-radius: 12px; padding: 20px; 
+            border: 1px solid rgba(0, 176, 246, 0.4); 
+            margin-bottom: 20px; 
+        }
+        .main-title { font-size: 42px; font-weight: bold; color: #00B0F6 !important; }
+        .interpretation-box { background: rgba(0, 176, 246, 0.1); padding: 25px; border-radius: 12px; border-left: 5px solid #00B0F6; margin-top: 20px; }
         .footer-section { padding: 40px; background: rgba(255,255,255,0.02); border-radius: 15px; margin-top: 50px; border: 1px solid rgba(255,255,255,0.05); }
     </style>
     """, unsafe_allow_html=True)
@@ -76,7 +92,6 @@ st.markdown("""
 # --- 1. SYSTEM INITIALIZATION ---
 
 def init_connections():
-    """ Handles secure connections to Supabase and Google's Generative AI """
     sb, ai = None, None
     try:
         if "SUPABASE_URL" in st.secrets and "SUPABASE_KEY" in st.secrets:
@@ -99,7 +114,6 @@ supabase, ai_model = init_connections()
 
 @st.cache_resource
 def run_forecast_model(df, periods, freq):
-    """ Uses Facebook Prophet for time-series forecasting. """
     model = Prophet(yearly_seasonality=True, weekly_seasonality=True, daily_seasonality=False)
     model.fit(df)
     future = model.make_future_dataframe(periods=periods, freq=freq)
@@ -107,7 +121,6 @@ def run_forecast_model(df, periods, freq):
     return forecast, model
 
 def perform_health_check(df, date_col, val_col):
-    """ Validates data quality before analysis """
     issues = []
     if df[date_col].isnull().any(): issues.append("Missing dates detected.")
     if df[val_col].isnull().any(): issues.append("Missing values in target column.")
@@ -116,11 +129,10 @@ def perform_health_check(df, date_col, val_col):
 
 # --- 3. UI LAYOUT & BRANDING ---
 
-# TOP BRANDING (Logo Only - Positioned above Support Bar)
+# TOP BRANDING
 if os.path.exists("assets/Hope tech 2.png"):
     st.image("assets/Hope tech 2.png", width=120)
 
-# Top Support Banner
 st.markdown(f'<div class="support-bar">🚀 <b>Support Zenith Innovation:</b> Help us scale {PRODUCT_NAME}. <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline; margin-left: 10px;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
 
 # Sidebar Configuration
@@ -136,7 +148,6 @@ with st.sidebar:
     st.divider()
     st.header("Project Configuration")
     
-    # Updated Project Namespace with Placeholder and Reminder
     project_name = st.text_input("Project Namespace:", value="Your Project Name")
     st.caption("💡 *Please remember to name your specific project above.*")
     
@@ -188,7 +199,6 @@ with col_left:
             u_date = st.selectbox("Map Date Column:", df_input.columns)
             u_val = st.selectbox("Map Target Value:", df_input.columns)
             
-            # Health Check Execution
             health_issues = perform_health_check(df_input, u_date, u_val)
             if health_issues:
                 for issue in health_issues: st.warning(f"⚠️ {issue}")
@@ -312,7 +322,6 @@ if st.session_state.get('analyzed'):
     fig.update_layout(template="plotly_dark", height=450, margin=dict(l=20, r=20, t=20, b=20))
     st.plotly_chart(fig, use_container_width=True)
 
-    # Narrative Summary
     start_val, end_val = future_only['yhat'].iloc[0], future_only['yhat'].iloc[-1]
     growth_rate = ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0
     st.markdown(f"""
@@ -323,14 +332,14 @@ if st.session_state.get('analyzed'):
     </div>
     """, unsafe_allow_html=True)
 
-# --- 7. FOOTER & ROBUST FEEDBACK ---
+# --- 7. FOOTER & FEEDBACK ---
 
 st.markdown('<div class="footer-section">', unsafe_allow_html=True)
 f_left, f_right = st.columns(2)
 with f_left:
     st.markdown("### 👨‍💻 Engineer's Profile")
     st.write(f"**Monivi Hope** | Lead at **{BRAND_NAME}**")
-    st.write("Data & Analytics Engineer dedicated to building intelligent solutions for a better world.")
+    st.write("Data & Analytics Engineer dedicated to building intelligent solutions.")
     st.markdown("[🔗 Digital Portfolio](https://linktr.ee/MoniviHope)")
 with f_right:
     st.markdown("### ✉️ Support Gateway")
@@ -342,16 +351,8 @@ with f_right:
                 try:
                     supabase.table("feedback").insert({"email": email_in, "message": msg_in}).execute()
                     st.success("Ticket submitted successfully.")
-                except:
-                    st.error("Database submission failed. Check RLS settings.")
+                except: st.error("Database submission failed.")
             else: st.error("Incomplete fields.")
 
-# Final Bottom Support Banner
 st.markdown(f'<div class="support-bar">💖 <b>Empower Hope Tech:</b> Your support drives our innovation. <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline; margin-left: 10px;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
-
-
-
-
-
-
