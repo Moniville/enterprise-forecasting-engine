@@ -16,20 +16,25 @@ BRAND_NAME = "Hope Tech"
 
 st.set_page_config(page_title=f"{PRODUCT_NAME} | {BRAND_NAME}", layout="wide")
 
-# --- GOOGLE ANALYTICS INTEGRATION ---
+# --- GOOGLE ANALYTICS INTEGRATION (Enhanced) ---
 GA_ID = "G-2XRSHF2S9F"
 
 ga_code = f"""
     <script async src="https://www.googletagmanager.com/gtag/js?id={GA_ID}"></script>
     <script>
+        // Use window.parent to ensure the tag breaks out of the Streamlit iframe
         window.parent.dataLayer = window.parent.dataLayer || [];
         function gtag(){{window.parent.dataLayer.push(arguments);}}
         gtag('js', new Date());
-        gtag('config', '{GA_ID}');
+        gtag('config', '{GA_ID}', {{
+            'debug_mode': true,
+            'send_page_view': true
+        }});
     </script>
 """
 import streamlit.components.v1 as components
-components.html(ga_code, height=0)
+# Adding a small width/height ensures the component is actually rendered by the browser
+components.html(ga_code, height=1, width=1)
 
 # Professional Dark-Mode Styling
 st.markdown("""
@@ -323,6 +328,7 @@ with f_right:
 # Final Bottom Support Banner
 st.markdown(f'<div class="support-bar">💖 <b>Empower Hope Tech:</b> Your support drives our innovation. <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline; margin-left: 10px;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
+
 
 
 
