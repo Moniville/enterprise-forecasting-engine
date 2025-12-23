@@ -47,45 +47,57 @@ components.html(ga_injection, height=0, width=0)
 # This overrides the 'white background' and 'faint text' problems.
 st.markdown("""
     <style>
-        /* Force the entire app background and text color */
-        html, body, [data-testid="stAppViewContainer"], .stApp {
+        /* 1. FORCE THE TOP HEADER TO BE DARK */
+        header[data-testid="stHeader"] {
+            background-color: #0e1117 !important;
+        }
+
+        /* 2. MAIN APP & CANVAS BACKGROUND */
+        .stAppViewMain, .stApp, [data-testid="stAppViewContainer"] {
             background-color: #0e1117 !important;
             color: #ffffff !important;
         }
 
-        /* Fix faint headers and standard text */
-        h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {
+        /* 3. FIX THE "INVISIBLE" BUTTONS (Submit & Reset) */
+        /* This makes the buttons dark with a cyan border so you can see them */
+        button[kind="primary"], button[kind="secondary"], .stButton > button {
+            background-color: #1a1c23 !important;
+            color: #ffffff !important;
+            border: 1px solid #00B0F6 !important;
+            transition: 0.3s ease all;
+        }
+        
+        /* Hover state: Makes them glow when you touch them */
+        button:hover {
+            background-color: #00B0F6 !important;
+            color: #0e1117 !important;
+            box-shadow: 0 0 10px #00B0F6 !important;
+        }
+
+        /* 4. FIX FAINT TEXT & HEADERS */
+        h1, h2, h3, h4, h5, h6, p, label, .stMarkdown {
             color: #ffffff !important;
             opacity: 1 !important;
         }
 
-        /* Force Sidebar Darkness */
+        /* 5. SIDEBAR BRANDING AREA */
         [data-testid="stSidebar"] {
             background-color: #1a1c23 !important;
-            border-right: 1px solid rgba(255,255,255,0.1) !important;
+            border-right: 1px solid rgba(0, 176, 246, 0.2) !important;
         }
 
-        /* Fix faintness in input boxes and dropdowns */
-        input, textarea, [data-baseweb="select"] {
-            color: #ffffff !important;
-            background-color: #262730 !important;
-        }
-
-        /* Custom Brand Elements */
+        /* 6. CUSTOM BRAND CARDS */
         .support-bar {
             background: linear-gradient(90deg, #00B0F6, #00FFCC);
             padding: 12px; border-radius: 8px; text-align: center;
-            margin-bottom: 25px; color: #0e1117 !important; font-weight: bold; font-size: 16px;
+            margin-bottom: 25px; color: #0e1117 !important; font-weight: bold;
         }
         .glass-card { 
-            background: rgba(255, 255, 255, 0.05); 
+            background: rgba(255, 255, 255, 0.03); 
             border-radius: 12px; padding: 20px; 
-            border: 1px solid rgba(0, 176, 246, 0.4); 
-            margin-bottom: 20px; 
+            border: 1px solid rgba(0, 176, 246, 0.3); 
         }
         .main-title { font-size: 42px; font-weight: bold; color: #00B0F6 !important; }
-        .interpretation-box { background: rgba(0, 176, 246, 0.1); padding: 25px; border-radius: 12px; border-left: 5px solid #00B0F6; margin-top: 20px; }
-        .footer-section { padding: 40px; background: rgba(255,255,255,0.02); border-radius: 15px; margin-top: 50px; border: 1px solid rgba(255,255,255,0.05); }
     </style>
     """, unsafe_allow_html=True)
 
@@ -356,3 +368,4 @@ with f_right:
 
 st.markdown(f'<div class="support-bar">💖 <b>Empower Hope Tech:</b> Your support drives our innovation. <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline; margin-left: 10px;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
+
