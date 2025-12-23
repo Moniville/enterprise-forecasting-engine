@@ -24,7 +24,6 @@ st.set_page_config(
 )
 
 # --- GOOGLE ANALYTICS INTEGRATION ---
-# Tracks user sessions to provide engagement metrics for product owners.
 GA_ID = "G-2XRSHF2S9F"
 ga_injection = f"""
     <script>
@@ -41,14 +40,11 @@ ga_injection = f"""
 components.html(ga_injection, height=0, width=0)
 
 # --- CUSTOM CSS: UNIFIED DARK THEME ---
-# Provides a high-end "SaaS" look with glassmorphism and high-visibility buttons.
 st.markdown("""
     <style>
-        /* Force background and text colors for consistent Dark Mode */
         header[data-testid="stHeader"] { background-color: #0e1117 !important; }
         .stAppViewMain, .stApp, [data-testid="stAppViewContainer"] { background-color: #0e1117 !important; color: #ffffff !important; }
         
-        /* Styled Action Buttons */
         button[kind="primary"], button[kind="secondary"], .stButton > button, div[data-testid="stForm"] button {
             background-color: #1a1c23 !important;
             color: #ffffff !important;
@@ -59,11 +55,9 @@ st.markdown("""
         }
         button:hover { background-color: #00B0F6 !important; color: #0e1117 !important; box-shadow: 0 0 15px #00B0F6 !important; }
 
-        /* Typography fixes for visibility */
         h1, h2, h3, h4, h5, h6, p, label, .stMarkdown { color: #ffffff !important; opacity: 1 !important; }
         [data-testid="stSidebar"] { background-color: #1a1c23 !important; border-right: 1px solid rgba(0, 176, 246, 0.2) !important; }
 
-        /* Custom Component Styling */
         .support-bar {
             background: linear-gradient(90deg, #00B0F6, #00FFCC);
             padding: 12px; border-radius: 8px; text-align: center;
@@ -76,17 +70,13 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 1. SYSTEM INITIALIZATION (API & DB Connections)
+# 1. SYSTEM INITIALIZATION
 # =================================================================
 def init_connections():
-    """Initializes cloud services: Supabase for feedback and Google Gemini for AI analysis."""
     sb, ai = None, None
     try:
-        # Connect to Supabase Backend
         if "SUPABASE_URL" in st.secrets and "SUPABASE_KEY" in st.secrets:
             sb = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-        
-        # Connect to Google Generative AI
         if "GOOGLE_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
             ai = genai.GenerativeModel("gemini-1.5-flash")
@@ -98,11 +88,10 @@ def init_connections():
 supabase, ai_model = init_connections()
 
 # =================================================================
-# 2. ANALYTICS & HEALTH TOOLS (The Science)
+# 2. ANALYTICS & HEALTH TOOLS
 # =================================================================
 @st.cache_resource
 def run_forecast_model(df, periods, freq):
-    """Executes Meta's Prophet algorithm for time-series projection."""
     model = Prophet(yearly_seasonality=True, weekly_seasonality=True, daily_seasonality=False)
     model.fit(df)
     future = model.make_future_dataframe(periods=periods, freq=freq)
@@ -110,7 +99,6 @@ def run_forecast_model(df, periods, freq):
     return forecast, model
 
 def perform_health_check(df, date_col, val_col):
-    """Performs data quality audits to ensure mathematical validity."""
     issues = []
     if df[date_col].isnull().any(): issues.append("Missing dates detected.")
     if df[val_col].isnull().any(): issues.append("Missing values in target column.")
@@ -126,12 +114,8 @@ if os.path.exists("assets/Hope tech 2.png"):
 st.markdown(f'<div class="support-bar">🚀 <b>Support Zenith Innovation:</b> Help us scale {PRODUCT_NAME}. <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline; margin-left: 10px;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
 
 with st.sidebar:
-    # ... (logo logic remains same) ...
-    
     st.divider()
     st.header("Project Configuration")
-    
-    # RESTORED EXACT TEXT AND CAPTION
     project_name = st.text_input("Project Namespace:", value="Your Project Name")
     st.caption("💡 *Please remember to name your specific project above.*")
     
@@ -140,7 +124,6 @@ with st.sidebar:
     curr_sym = currency_lookup[selected_curr_name]
     
     input_method = st.radio("Inbound Data Source:", ["CSV Upload (Recommended)", "Manual Entry"])
-    
     st.divider()
     ma_window = st.slider("Smoothing Window (Days):", 2, 90, 7)
     
@@ -148,7 +131,6 @@ with st.sidebar:
         for key in list(st.session_state.keys()): del st.session_state[key]
         st.rerun()
 
-    # Developer/Admin Area
     with st.expander("🔒 Developer Access"):
         admin_key = st.text_input("Security Key", type="password")
         is_admin = (admin_key == "Ibiene2003#")
@@ -172,7 +154,6 @@ col_left, col_right = st.columns([2.2, 1.3])
 with col_left:
     df_input = None
     u_date, u_val = None, None
-    
     if "CSV Upload" in input_method:
         file = st.file_uploader("Drop dataset here", type="csv")
         if file:
@@ -181,7 +162,6 @@ with col_left:
             st.dataframe(df_input.head(5), use_container_width=True)
             u_date = st.selectbox("Map Date Column:", df_input.columns)
             u_val = st.selectbox("Map Target Value:", df_input.columns)
-            
             health_issues = perform_health_check(df_input, u_date, u_val)
             if health_issues:
                 for issue in health_issues: st.warning(f"⚠️ {issue}")
@@ -210,7 +190,6 @@ with col_left:
                     working_df['ds'] = pd.date_range(end=datetime.now(), periods=len(working_df), freq=freq_code)
                 
                 working_df = working_df.dropna().sort_values('ds').groupby('ds')['y'].sum().reset_index()
-                
                 with st.spinner("AI Engine executing..."):
                     freq_map = {"Yearly": "YS", "Monthly": "MS", "Weekly": "W", "Daily": "D"}
                     f_data, f_model = run_forecast_model(working_df, horizon, freq_map[freq_label])
@@ -218,7 +197,7 @@ with col_left:
             except Exception as e: st.error(f"Computation Error: {e}")
 
 # =================================================================
-# 5. CHAT-STYLE AI ASSISTANT (NLP Layer)
+# 5. CHAT-STYLE AI ASSISTANT (Fixed Indentation & Logic)
 # =================================================================
 with col_right:
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
@@ -231,79 +210,53 @@ with col_right:
             with st.chat_message(message["role"]): st.markdown(message["content"])
 
     if st.session_state.get('analyzed') and ai_model:
-    if query := st.chat_input("Ask about your projections..."):
-        st.session_state.messages.append({"role": "user", "content": query})
-        with chat_container:
-            with st.chat_message("user"): st.markdown(query)
+        # CORRECTED INDENTATION FOR STREAMLIT CLOUD
+        if query := st.chat_input("Ask about your projections..."):
+            st.session_state.messages.append({"role": "user", "content": query})
+            with chat_container:
+                with st.chat_message("user"): st.markdown(query)
 
-        hist_data = st.session_state['history']
-        forecast_data = st.session_state['forecast']
-        
-        # We use a clean prompt to ensure the API doesn't reject it
-        prompt = f"""
-        Role: Conversational Analyst for {BRAND_NAME}.
-        Project: {project_name}.
-        Context: Historical sum {curr_sym}{hist_data['y'].sum():,.2f}. 
-        Forecasted sum {curr_sym}{forecast_data['yhat'].tail(horizon).sum():,.2f}.
-        Question: {query}
-        Instruction: Answer concisely in text only.
-        """
-
-        try:
-            # We add a small delay to prevent rapid-fire rate limiting
-            time.sleep(1) 
+            hist_data = st.session_state['history']
+            forecast_data = st.session_state['forecast']
             
-            # Use safety_settings to prevent the "Busy" error caused by false-positive filters
-            response = ai_model.generate_content(
-                prompt,
-                safety_settings={
-                    "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
-                    "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
-                    "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE",
-                    "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
-                }
-            )
-            
-            ai_text = response.text
-            st.session_state.messages.append({"role": "assistant", "content": ai_text})
-            st.rerun()
-            
-        except Exception as e:
-            # This will now show you the ACTUAL error instead of a generic message
-            st.error(f"AI Engine Error: {str(e)}")
-            st.sidebar.error(f"Debug Info: {e}")
-            
-            # --- INTEGRATED AI PROMPT (Restoring User Query context) ---
             prompt = f"""
             Identify as a conversational AI analyst for {BRAND_NAME}. 
             The project being discussed is: {project_name}.
-
             CONTEXT:
             - Historical Total: {curr_sym}{hist_data['y'].sum():,.2f}
             - Forecast Total: {curr_sym}{forecast_data['yhat'].tail(horizon).sum():,.2f}
             - Data Range: {hist_data['ds'].min().date()} to {hist_data['ds'].max().date()}
-            
             USER QUESTION: {query}
-
-            Answer professionally. Use only text. No greetings. Reference the project name in your response.
+            Answer professionally. No greetings. Reference the project name.
             """
+
             try:
-                response = ai_model.generate_content(prompt)
+                time.sleep(1) 
+                response = ai_model.generate_content(
+                    prompt,
+                    safety_settings={
+                        "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
+                        "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
+                        "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE",
+                        "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
+                    }
+                )
                 ai_text = response.text
                 st.session_state.messages.append({"role": "assistant", "content": ai_text})
-                st.rerun() # Refresh to show message
-            except: st.error("AI node is momentarily busy.")
-    else: st.info("Process data to unlock AI chat.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"AI node is momentarily busy.")
+                st.sidebar.error(f"Debug: {e}")
+    else: 
+        st.info("Process data to unlock AI chat.")
     st.markdown('</div>', unsafe_allow_html=True)
 
 # =================================================================
-# 6. VISUALIZATION DASHBOARD (Logic & Reporting)
+# 6. VISUALIZATION DASHBOARD
 # =================================================================
 if st.session_state.get('analyzed'):
     hist, fcst, model = st.session_state['history'], st.session_state['forecast'], st.session_state['model']
     future_only = fcst.tail(horizon)
-    
-    # Pre-calculating anomalies to use across all dashboard views
     perf = fcst.set_index('ds')[['yhat_lower', 'yhat_upper']].join(hist.set_index('ds'))
     anoms = perf[(perf['y'] > perf['yhat_upper']) | (perf['y'] < perf['yhat_lower'])]
     
@@ -311,13 +264,7 @@ if st.session_state.get('analyzed'):
     fig = go.Figure()
 
     if view == "Forecast":
-        fig.add_trace(go.Scatter(
-            x=future_only['ds'], y=future_only['yhat'], 
-            mode='lines+markers+text', 
-            text=[f"{curr_sym}{v:,.0f}" for v in future_only['yhat']],
-            textposition="top center",
-            line=dict(color='#00B0F6', width=5), marker=dict(size=12), name="Prediction"
-        ))
+        fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat'], mode='lines+markers+text', text=[f"{curr_sym}{v:,.0f}" for v in future_only['yhat']], textposition="top center", line=dict(color='#00B0F6', width=5), name="Prediction"))
         fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat_lower'], fill='tonexty', fillcolor='rgba(0,176,246,0.1)', line=dict(width=0), name="Confidence Interval"))
     
     elif view == "Anomalies":
@@ -331,7 +278,7 @@ if st.session_state.get('analyzed'):
     elif view == "Accuracy":
         hist_preds = fcst[fcst['ds'].isin(hist['ds'])]
         hist['ma'] = hist['y'].rolling(window=ma_window).mean()
-        fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Actual', opacity=0.4, line=dict(width=3)))
+        fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Actual', opacity=0.4))
         fig.add_trace(go.Scatter(x=hist['ds'], y=hist['ma'], name='Trend', line=dict(color='#00FFCC', width=5)))
         fig.add_trace(go.Scatter(x=hist_preds['ds'], y=hist_preds['yhat'], name='AI Backtest', line=dict(dash='dot', color='#00B0F6', width=4)))
     
@@ -346,39 +293,31 @@ if st.session_state.get('analyzed'):
     
     elif view == "Annual":
         yearly = hist.set_index('ds').resample('YS')['y'].sum().reset_index()
-        fig.add_trace(go.Scatter(x=yearly['ds'], y=yearly['y'], mode='lines+markers+text', text=[f"{curr_sym}{v:,.0f}" for v in yearly['y']], textposition="top left", line=dict(color="#EF553B", width=6), marker=dict(size=14)))
+        fig.add_trace(go.Scatter(x=yearly['ds'], y=yearly['y'], mode='lines+markers+text', text=[f"{curr_sym}{v:,.0f}" for v in yearly['y']], textposition="top left", line=dict(color="#EF553B", width=6)))
 
-    fig.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='#0e1117', height=450, margin=dict(l=20, r=20, t=20, b=20), font=dict(size=14, color="white"))
+    fig.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='#0e1117', height=450)
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- 6.1 EXECUTIVE SUMMARY (Natural Language Generator) ---
+    # --- EXECUTIVE SUMMARY ---
     start_val, end_val = future_only['yhat'].iloc[0], future_only['yhat'].iloc[-1]
     growth_rate = ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0
     total_vol = future_only['yhat'].sum()
-    growth_desc = "upward momentum" if growth_rate > 0 else "a cooling period"
-    volatility = "highly consistent" if len(anoms) < 3 else "showing unexpected volatility"
-    
     st.markdown(f"""
     <div class="interpretation-box">
         <b>🔍 Executive Summary for {project_name}</b><br>
         Over the next {horizon} {freq_label.lower()}s, the AI predicts a total volume of <b>{curr_sym}{total_vol:,.2f}</b>. 
-        We are seeing <b>{growth_desc}</b> with a projected movement of <b>{growth_rate:.1f}%</b>. 
-        <br><br>
-        <b>📈 Insight & Analysis:</b><br>
-        The historical data peaked at a <b>Highest Spike of {curr_sym}{hist['y'].max():,.2f}</b>, while the <b>Lowest Dip was {curr_sym}{hist['y'].min():,.2f}</b>. 
-        Currently, the system identifies that your data is <b>{volatility}</b>. {f'We flagged {len(anoms)} irregular activities that sit outside our standard expectations.' if len(anoms) > 0 else 'No major irregularities were found, suggesting a stable operation.'}
+        We are seeing <b>{"upward momentum" if growth_rate > 0 else "a cooling period"}</b> with a projected movement of <b>{growth_rate:.1f}%</b>.
     </div>
     """, unsafe_allow_html=True)
 
 # =================================================================
 # 7. FOOTER & FEEDBACK SYSTEM
 # =================================================================
-st.markdown('<div class="footer-section">', unsafe_allow_html=True)
+st.divider()
 f_left, f_right = st.columns(2)
 with f_left:
     st.markdown("### 👨‍💻 Engineer's Profile")
     st.write(f"**Monivi Hope** | Lead at **{BRAND_NAME}**")
-    st.write("Data & Analytics Engineer dedicated to building intelligent solutions.")
     st.markdown("[🔗 Digital Portfolio](https://linktr.ee/MoniviHope)")
 with f_right:
     st.markdown("### ✉️ Support Gateway")
@@ -389,10 +328,7 @@ with f_right:
             if supabase and email_in and msg_in:
                 try:
                     supabase.table("feedback").insert({"email": email_in, "message": msg_in}).execute()
-                    st.success("Ticket submitted successfully.")
+                    st.success("Ticket submitted.")
                 except: st.error("Database submission failed.")
-            else: st.error("Incomplete fields.")
 
-st.markdown(f'<div class="support-bar">💖 <b>Empower Hope Tech:</b> Your support drives our innovation. <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline; margin-left: 10px;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
-
+st.markdown(f'<div class="support-bar">💖 <b>Empower Hope Tech:</b> <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
