@@ -8,12 +8,26 @@ import time
 import os
 import google.generativeai as genai
 from supabase import create_client, Client
+import streamlit.components.v1 as components
 
 # --- 0. BRANDING & UI CONFIG ---
 PRODUCT_NAME = "Pulse AI"
 BRAND_NAME = "Hope Tech"
 
 st.set_page_config(page_title=f"{PRODUCT_NAME} | {BRAND_NAME}", layout="wide")
+
+# --- GOOGLE ANALYTICS INTEGRATION ---
+# Measurement ID: G-2XRSHF2S9F
+ga_code = """
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-2XRSHF2S9F"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-2XRSHF2S9F');
+    </script>
+"""
+components.html(ga_code, height=0)
 
 # Professional Dark-Mode Styling
 st.markdown("""
@@ -74,7 +88,7 @@ def perform_health_check(df, date_col, val_col):
 
 # --- 3. UI LAYOUT & BRANDING ---
 
-# TOP BRANDING (Logo Only)
+# TOP BRANDING (Logo Only - Positioned above Support Bar)
 if os.path.exists("assets/Hope tech 2.png"):
     st.image("assets/Hope tech 2.png", width=120)
 
@@ -118,9 +132,12 @@ with st.sidebar:
 
 if is_admin:
     if supabase:
-        fb = supabase.table("feedback").select("*").execute()
-        st.write("### Internal Feedback Log")
-        st.dataframe(pd.DataFrame(fb.data))
+        try:
+            fb = supabase.table("feedback").select("*").execute()
+            st.write("### Internal Feedback Log")
+            st.dataframe(pd.DataFrame(fb.data))
+        except:
+            st.error("Could not fetch logs.")
     if st.button("End Session"): st.rerun()
     st.stop()
 
@@ -215,12 +232,7 @@ with col_right:
             """
 
             try:
-                try:
-                    response = ai_model.generate_content(prompt)
-                except:
-                    time.sleep(60)
-                    response = ai_model.generate_content(prompt)
-                
+                response = ai_model.generate_content(prompt)
                 ai_text = response.text
                 st.session_state.messages.append({"role": "assistant", "content": ai_text})
                 with chat_container:
