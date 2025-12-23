@@ -16,7 +16,6 @@ import streamlit.components.v1 as components
 PRODUCT_NAME = "Pulse AI"
 BRAND_NAME = "Hope Tech"
 
-# Page config ensures the dashboard uses the full screen width
 st.set_page_config(
     page_title=f"{PRODUCT_NAME} | {BRAND_NAME}", 
     layout="wide",
@@ -197,7 +196,7 @@ with col_left:
             except Exception as e: st.error(f"Computation Error: {e}")
 
 # =================================================================
-# 5. CHAT-STYLE AI ASSISTANT (Fixed Indentation & Logic)
+# 5. CHAT-STYLE AI ASSISTANT (Fixed Node Busy Logic)
 # =================================================================
 with col_right:
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
@@ -210,7 +209,6 @@ with col_right:
             with st.chat_message(message["role"]): st.markdown(message["content"])
 
     if st.session_state.get('analyzed') and ai_model:
-        # CORRECTED INDENTATION FOR STREAMLIT CLOUD
         if query := st.chat_input("Ask about your projections..."):
             st.session_state.messages.append({"role": "user", "content": query})
             with chat_container:
@@ -219,34 +217,18 @@ with col_right:
             hist_data = st.session_state['history']
             forecast_data = st.session_state['forecast']
             
-            prompt = f"""
-            Identify as a conversational AI analyst for {BRAND_NAME}. 
-            The project being discussed is: {project_name}.
-            CONTEXT:
-            - Historical Total: {curr_sym}{hist_data['y'].sum():,.2f}
-            - Forecast Total: {curr_sym}{forecast_data['yhat'].tail(horizon).sum():,.2f}
-            - Data Range: {hist_data['ds'].min().date()} to {hist_data['ds'].max().date()}
-            USER QUESTION: {query}
-            Answer professionally. No greetings. Reference the project name.
-            """
+            # Simplified prompt to prevent API bottlenecks
+            prompt = f"As an analyst for {BRAND_NAME}, interpret project '{project_name}'. Hist Total: {curr_sym}{hist_data['y'].sum():,.2f}. Forecast Total: {curr_sym}{forecast_data['yhat'].tail(horizon).sum():,.2f}. User: {query}. Keep it professional."
 
             try:
                 time.sleep(1) 
-                response = ai_model.generate_content(
-                    prompt,
-                    safety_settings={
-                        "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
-                        "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
-                        "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE",
-                        "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
-                    }
-                )
+                response = ai_model.generate_content(prompt)
                 ai_text = response.text
                 st.session_state.messages.append({"role": "assistant", "content": ai_text})
                 st.rerun()
             except Exception as e:
-                st.error(f"AI node is momentarily busy.")
-                st.sidebar.error(f"Debug: {e}")
+                st.warning("AI Node is busy. Refining the connection... please re-send your question.")
+                st.sidebar.error(f"AI Debug: {e}")
     else: 
         st.info("Process data to unlock AI chat.")
     st.markdown('</div>', unsafe_allow_html=True)
@@ -311,13 +293,14 @@ if st.session_state.get('analyzed'):
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 7. FOOTER & FEEDBACK SYSTEM
+# 7. FOOTER & FEEDBACK SYSTEM (Profile Updated)
 # =================================================================
 st.divider()
 f_left, f_right = st.columns(2)
 with f_left:
     st.markdown("### 👨‍💻 Engineer's Profile")
     st.write(f"**Monivi Hope** | Lead at **{BRAND_NAME}**")
+    st.write("Data & Analytics Engineer, building solutions to help build a better humanity.")
     st.markdown("[🔗 Digital Portfolio](https://linktr.ee/MoniviHope)")
 with f_right:
     st.markdown("### ✉️ Support Gateway")
