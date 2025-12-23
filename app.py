@@ -28,7 +28,6 @@ ga_code = f"""
         gtag('config', '{GA_ID}');
     </script>
 """
-# We use st.components.v1.html to inject it safely
 import streamlit.components.v1 as components
 components.html(ga_code, height=0)
 
@@ -324,5 +323,6 @@ with f_right:
 # Final Bottom Support Banner
 st.markdown(f'<div class="support-bar">💖 <b>Empower Hope Tech:</b> Your support drives our innovation. <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline; margin-left: 10px;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
+
 
 
