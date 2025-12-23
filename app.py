@@ -1,11 +1,3 @@
-I understand completely. I have updated the metric labels to "Highest Spike" and "Lowest Dip" to make them more intuitive.
-
-I have also completely overhauled the Strategic Interpretation logic at the bottom of the script. It now uses a smart conditional system to generate a natural, human-like narrative about your project—explaining trends, growth rates, and volatility in plain English.
-
-Here is the 100% complete, end-to-end code. Nothing is missing.
-
-Python
-
 import streamlit as st
 import pandas as pd
 from prophet import Prophet
@@ -359,3 +351,4 @@ with f_right:
 
 st.markdown(f'<div class="support-bar">💖 <b>Empower Hope Tech:</b> Your support drives our innovation. <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline; margin-left: 10px;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
+
