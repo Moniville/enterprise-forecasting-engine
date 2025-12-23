@@ -40,19 +40,36 @@ ga_injection = f"""
 import streamlit.components.v1 as components
 components.html(ga_injection, height=0, width=0)
 
-# Professional Dark-Mode Styling
+# Professional Dark-Mode Styling (FORCED)
 st.markdown("""
     <style>
-    .stApp { background-color: #0e1117; color: #ffffff; }
-    .support-bar {
-        background: linear-gradient(90deg, #00B0F6, #00FFCC);
-        padding: 12px; border-radius: 8px; text-align: center;
-        margin-bottom: 25px; color: #0e1117; font-weight: bold; font-size: 16px;
-    }
-    .glass-card { background: rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 20px; border: 1px solid rgba(255, 255, 255, 0.1); margin-bottom: 20px; }
-    .main-title { font-size: 42px; font-weight: bold; color: #00B0F6; margin-top: 0px; margin-bottom: 5px; }
-    .interpretation-box { background: rgba(255, 255, 255, 0.05); padding: 25px; border-radius: 12px; border-left: 5px solid #00B0F6; margin-top: 20px; }
-    .footer-section { padding: 40px; background: rgba(255,255,255,0.02); border-radius: 15px; margin-top: 50px; border: 1px solid rgba(255,255,255,0.05); }
+        /* 1. Force the absolute background of the entire app */
+        .stAppViewMain, .stApp {
+            background-color: #0e1117 !important;
+            color: #ffffff !important;
+        }
+        
+        /* 2. Style the sidebar to match */
+        [data-testid="stSidebar"] {
+            background-color: #1a1c23 !important;
+        }
+
+        /* 3. Fix text visibility in input boxes */
+        input, textarea, select {
+            color: #ffffff !important;
+            background-color: #262730 !important;
+        }
+
+        /* Your existing support bar & cards */
+        .support-bar {
+            background: linear-gradient(90deg, #00B0F6, #00FFCC);
+            padding: 12px; border-radius: 8px; text-align: center;
+            margin-bottom: 25px; color: #0e1117; font-weight: bold; font-size: 16px;
+        }
+        .glass-card { background: rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 20px; border: 1px solid rgba(255, 255, 255, 0.1); margin-bottom: 20px; }
+        .main-title { font-size: 42px; font-weight: bold; color: #00B0F6; margin-top: 0px; margin-bottom: 5px; }
+        .interpretation-box { background: rgba(255, 255, 255, 0.05); padding: 25px; border-radius: 12px; border-left: 5px solid #00B0F6; margin-top: 20px; }
+        .footer-section { padding: 40px; background: rgba(255,255,255,0.02); border-radius: 15px; margin-top: 50px; border: 1px solid rgba(255,255,255,0.05); }
     </style>
     """, unsafe_allow_html=True)
 
@@ -332,6 +349,7 @@ with f_right:
 # Final Bottom Support Banner
 st.markdown(f'<div class="support-bar">💖 <b>Empower Hope Tech:</b> Your support drives our innovation. <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline; margin-left: 10px;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
+
 
 
 
