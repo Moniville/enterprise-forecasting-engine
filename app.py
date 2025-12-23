@@ -221,8 +221,8 @@ with col_right:
             USER QUERY: {query}
 
             CRITICAL RULES:
-            1. DO NOT use email-style signatures (e.g., No "Best regards", No "Lead Analyst").
-            2. DO NOT use "Hello" or greetings at the start. 
+            1. DO NOT use email-style signatures (No "Best regards", No "Lead Analyst").
+            2. DO NOT use greetings like "Hello".
             3. Be direct, conversational, and intelligent.
             """
             try:
@@ -245,8 +245,16 @@ if st.session_state.get('analyzed'):
     fig = go.Figure()
 
     if view == "Forecast":
-        fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat'], mode='lines+markers', line=dict(color='#00B0F6', width=5), marker=dict(size=12), name="Prediction"))
+        fig.add_trace(go.Scatter(
+            x=future_only['ds'], y=future_only['yhat'], 
+            mode='lines+markers+text', 
+            text=[f"{curr_sym}{v:,.0f}" for v in future_only['yhat']],
+            textposition="top center",
+            line=dict(color='#00B0F6', width=5), 
+            marker=dict(size=12), name="Prediction"
+        ))
         fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat_lower'], fill='tonexty', fillcolor='rgba(0,176,246,0.1)', line=dict(width=0), name="Confidence Interval"))
+    
     elif view == "Anomalies":
         perf = fcst.set_index('ds')[['yhat_lower', 'yhat_upper']].join(hist.set_index('ds'))
         anoms = perf[(perf['y'] > perf['yhat_upper']) | (perf['y'] < perf['yhat_lower'])]
@@ -254,24 +262,40 @@ if st.session_state.get('analyzed'):
         a1.metric("Irregularities", len(anoms))
         a2.metric("Project Peak", f"{curr_sym}{hist['y'].max():,.2f}")
         a3.metric("Project Floor", f"{curr_sym}{hist['y'].min():,.2f}")
-        fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Historical', line=dict(width=4)))
+        fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Historical Data', line=dict(width=4)))
         fig.add_trace(go.Scatter(x=anoms.index, y=anoms['y'], mode='markers', marker=dict(color='red', size=15, symbol='x'), name='Anomaly'))
+    
     elif view == "Accuracy":
         hist_preds = fcst[fcst['ds'].isin(hist['ds'])]
         hist['ma'] = hist['y'].rolling(window=ma_window).mean()
         fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Actual', opacity=0.4, line=dict(width=3)))
         fig.add_trace(go.Scatter(x=hist['ds'], y=hist['ma'], name='Trend', line=dict(color='#00FFCC', width=5)))
         fig.add_trace(go.Scatter(x=hist_preds['ds'], y=hist_preds['yhat'], name='AI Backtest', line=dict(dash='dot', color='#00B0F6', width=4)))
+    
     elif view == "Monthly":
         monthly = hist.set_index('ds').resample('MS')['y'].sum().reset_index()
-        fig.add_trace(go.Bar(x=monthly['ds'], y=monthly['y'], marker_color="#636EFA"))
+        fig.add_trace(go.Bar(
+            x=monthly['ds'], y=monthly['y'], 
+            text=[f"{curr_sym}{v:,.0f}" for v in monthly['y']],
+            textposition='auto',
+            marker_color="#636EFA"
+        ))
+    
     elif view == "Weekly":
         sample_week = pd.DataFrame({'ds': pd.date_range('2024-01-01', periods=7)})
         weekly_comp = model.predict(sample_week)[['ds', 'weekly']]
         fig.add_trace(go.Bar(x=['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], y=weekly_comp['weekly'], marker_color='#00FFCC'))
+    
     elif view == "Annual":
         yearly = hist.set_index('ds').resample('YS')['y'].sum().reset_index()
-        fig.add_trace(go.Scatter(x=yearly['ds'], y=yearly['y'], mode='lines+markers', line=dict(color="#EF553B", width=6), marker=dict(size=14)))
+        fig.add_trace(go.Scatter(
+            x=yearly['ds'], y=yearly['y'], 
+            mode='lines+markers+text', 
+            text=[f"{curr_sym}{v:,.0f}" for v in yearly['y']],
+            textposition="top left",
+            line=dict(color="#EF553B", width=6), 
+            marker=dict(size=14)
+        ))
 
     fig.update_layout(
         template="plotly_dark",
@@ -285,7 +309,7 @@ if st.session_state.get('analyzed'):
 
     start_val, end_val = future_only['yhat'].iloc[0], future_only['yhat'].iloc[-1]
     growth_rate = ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0
-    st.markdown(f'<div class="interpretation-box"><b>Strategic Report:</b> {project_name} is projected to generate <b>{curr_sym}{future_only["yhat"].sum():,.2f}</b> in total volume. <br> Currently trending at a <b>{growth_rate:.1f}% {"Growth" if growth_rate > 0 else "Decline"}</b>.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="interpretation-box"><b>Strategic Report:</b> {project_name} projected at <b>{curr_sym}{future_only["yhat"].sum():,.2f}</b>. <br> <b>Outlook:</b> {growth_rate:.1f}% {"Growth" if growth_rate > 0 else "Decline"}.</div>', unsafe_allow_html=True)
 
 # --- 7. FOOTER & FEEDBACK ---
 st.markdown('<div class="footer-section">', unsafe_allow_html=True)
