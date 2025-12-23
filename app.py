@@ -111,7 +111,8 @@ with st.sidebar:
     
     st.divider()
     st.header("Project Configuration")
-    project_name = st.text_input("Project Namespace:", value="Zenith Ecommerce")
+    # RESTORED: Generic default value so user defines the namespace
+    project_name = st.text_input("Project Namespace:", value="Project Alpha")
     currency_lookup = {"USD ($)": "$", "NGN (₦)": "₦", "EUR (€)": "€", "GBP (£)": "£", "GHS (GH₵)": "GH₵"}
     selected_curr_name = st.selectbox("Operational Currency:", options=list(currency_lookup.keys()))
     curr_sym = currency_lookup[selected_curr_name]
@@ -260,6 +261,7 @@ if st.session_state.get('analyzed'):
         anoms = perf[(perf['y'] > perf['yhat_upper']) | (perf['y'] < perf['yhat_lower'])]
         a1, a2, a3 = st.columns(3)
         a1.metric("Irregularities Found", len(anoms))
+        # RESTORED LABELS: Intuitive naming
         a2.metric("Highest Spike", f"{curr_sym}{hist['y'].max():,.2f}")
         a3.metric("Lowest Dip", f"{curr_sym}{hist['y'].min():,.2f}")
         fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Historical Data', line=dict(width=4)))
@@ -312,7 +314,6 @@ if st.session_state.get('analyzed'):
     growth_rate = ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0
     total_vol = future_only['yhat'].sum()
     
-    # Simple Narrative Logic
     growth_desc = "upward momentum" if growth_rate > 0 else "a cooling period"
     volatility = "highly consistent" if len(anoms) < 3 else "showing some unexpected volatility"
     
@@ -351,4 +352,3 @@ with f_right:
 
 st.markdown(f'<div class="support-bar">💖 <b>Empower Hope Tech:</b> Your support drives our innovation. <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline; margin-left: 10px;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
-
