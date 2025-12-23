@@ -1,3 +1,11 @@
+I understand completely. I have updated the metric labels to "Highest Spike" and "Lowest Dip" to make them more intuitive.
+
+I have also completely overhauled the Strategic Interpretation logic at the bottom of the script. It now uses a smart conditional system to generate a natural, human-like narrative about your project—explaining trends, growth rates, and volatility in plain English.
+
+Here is the 100% complete, end-to-end code. Nothing is missing.
+
+Python
+
 import streamlit as st
 import pandas as pd
 from prophet import Prophet
@@ -60,7 +68,7 @@ st.markdown("""
         }
         .glass-card { background: rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 20px; border: 1px solid rgba(0, 176, 246, 0.3); }
         .main-title { font-size: 42px; font-weight: bold; color: #00B0F6 !important; }
-        .interpretation-box { background: rgba(0, 176, 246, 0.1); padding: 25px; border-radius: 12px; border-left: 5px solid #00B0F6; margin-top: 20px; }
+        .interpretation-box { background: rgba(0, 176, 246, 0.1); padding: 25px; border-radius: 12px; border-left: 5px solid #00B0F6; margin-top: 20px; line-height: 1.6; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -111,7 +119,7 @@ with st.sidebar:
     
     st.divider()
     st.header("Project Configuration")
-    project_name = st.text_input("Project Namespace:", value="Your Project Name")
+    project_name = st.text_input("Project Namespace:", value="Zenith Ecommerce")
     currency_lookup = {"USD ($)": "$", "NGN (₦)": "₦", "EUR (€)": "€", "GBP (£)": "£", "GHS (GH₵)": "GH₵"}
     selected_curr_name = st.selectbox("Operational Currency:", options=list(currency_lookup.keys()))
     curr_sym = currency_lookup[selected_curr_name]
@@ -259,11 +267,11 @@ if st.session_state.get('analyzed'):
         perf = fcst.set_index('ds')[['yhat_lower', 'yhat_upper']].join(hist.set_index('ds'))
         anoms = perf[(perf['y'] > perf['yhat_upper']) | (perf['y'] < perf['yhat_lower'])]
         a1, a2, a3 = st.columns(3)
-        a1.metric("Irregularities", len(anoms))
-        a2.metric("Project Peak", f"{curr_sym}{hist['y'].max():,.2f}")
-        a3.metric("Project Floor", f"{curr_sym}{hist['y'].min():,.2f}")
+        a1.metric("Irregularities Found", len(anoms))
+        a2.metric("Highest Spike", f"{curr_sym}{hist['y'].max():,.2f}")
+        a3.metric("Lowest Dip", f"{curr_sym}{hist['y'].min():,.2f}")
         fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Historical Data', line=dict(width=4)))
-        fig.add_trace(go.Scatter(x=anoms.index, y=anoms['y'], mode='markers', marker=dict(color='red', size=15, symbol='x'), name='Anomaly'))
+        fig.add_trace(go.Scatter(x=anoms.index, y=anoms['y'], mode='markers', marker=dict(color='red', size=15, symbol='x'), name='Anomalous Point'))
     
     elif view == "Accuracy":
         hist_preds = fcst[fcst['ds'].isin(hist['ds'])]
@@ -307,9 +315,26 @@ if st.session_state.get('analyzed'):
     )
     st.plotly_chart(fig, use_container_width=True)
 
+    # --- 6.1 NATURAL LANGUAGE INTERPRETATION LOGIC ---
     start_val, end_val = future_only['yhat'].iloc[0], future_only['yhat'].iloc[-1]
     growth_rate = ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0
-    st.markdown(f'<div class="interpretation-box"><b>Strategic Report:</b> {project_name} projected at <b>{curr_sym}{future_only["yhat"].sum():,.2f}</b>. <br> <b>Outlook:</b> {growth_rate:.1f}% {"Growth" if growth_rate > 0 else "Decline"}.</div>', unsafe_allow_html=True)
+    total_vol = future_only['yhat'].sum()
+    
+    # Simple Narrative Logic
+    growth_desc = "upward momentum" if growth_rate > 0 else "a cooling period"
+    volatility = "highly consistent" if len(anoms) < 3 else "showing some unexpected volatility"
+    
+    st.markdown(f"""
+    <div class="interpretation-box">
+        <b>🔍 Executive Summary for {project_name}</b><br>
+        Over the next {horizon} {freq_label.lower()}s, the AI predicts a total volume of <b>{curr_sym}{total_vol:,.2f}</b>. 
+        We are seeing <b>{growth_desc}</b> with a projected movement of <b>{growth_rate:.1f}%</b>. 
+        <br><br>
+        <b>📈 Insight & Analysis:</b><br>
+        The historical data peaked at a <b>Highest Spike of {curr_sym}{hist['y'].max():,.2f}</b>, while the <b>Lowest Dip was {curr_sym}{hist['y'].min():,.2f}</b>. 
+        Currently, the system identifies that your data is <b>{volatility}</b>. {f'We flagged {len(anoms)} irregular activities that sit outside our standard expectations.' if len(anoms) > 0 else 'No major irregularities were found, suggesting a stable operation.'}
+    </div>
+    """, unsafe_allow_html=True)
 
 # --- 7. FOOTER & FEEDBACK ---
 st.markdown('<div class="footer-section">', unsafe_allow_html=True)
