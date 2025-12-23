@@ -69,32 +69,55 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 1. SYSTEM INITIALIZATION
+# 1. SYSTEM INITIALIZATION (IMPROVED AI CONNECTION)
 # =================================================================
 def init_connections():
+    """Initialize Supabase and Google AI connections with proper error handling"""
     sb, ai = None, None
+    
+    # Initialize Supabase
     try:
         if "SUPABASE_URL" in st.secrets and "SUPABASE_KEY" in st.secrets:
             sb = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-        if "GOOGLE_API_KEY" in st.secrets:
-            genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-            ai = genai.GenerativeModel("gemini-1.5-flash")
-            # Test connection
-            try:
-                test = ai.generate_content("test", request_options={"timeout": 10})
-                st.sidebar.success("⚡ AI Engine Linked: Gemini 1.5 Flash")
-            except Exception as e:
-                st.sidebar.warning(f"⚠️ AI Engine: Connection unstable")
-                ai = None
+            st.sidebar.success("✅ Database Connected")
     except Exception as e:
-        st.sidebar.warning("System restricted: AI connectivity limited.")
+        st.sidebar.warning(f"⚠️ Database: {str(e)[:50]}")
+    
+    # Initialize Google AI with proper configuration
+    try:
+        if "GOOGLE_API_KEY" in st.secrets:
+            # Configure the API
+            genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+            
+            # Create model instance with safety settings
+            ai = genai.GenerativeModel(
+                model_name="gemini-1.5-flash",
+                generation_config={
+                    "temperature": 0.7,
+                    "top_p": 0.95,
+                    "top_k": 40,
+                    "max_output_tokens": 1024,
+                }
+            )
+            
+            st.sidebar.success("✅ AI Engine Active: Gemini 1.5 Flash")
+        else:
+            st.sidebar.error("❌ GOOGLE_API_KEY not found in secrets")
+            st.sidebar.info("👉 Add your API key in Streamlit Cloud Secrets")
+    except Exception as e:
+        st.sidebar.error(f"❌ AI Setup Failed: {str(e)[:50]}")
+        st.sidebar.info("Check your Google API Key and quota")
+        ai = None
+    
     return sb, ai
 
 supabase, ai_model = init_connections()
 
-# Initialize session state for chat cooldown
+# Initialize session state
 if "last_ai_call" not in st.session_state:
     st.session_state.last_ai_call = 0
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
 # =================================================================
 # 2. ANALYTICS & HEALTH TOOLS
@@ -113,6 +136,34 @@ def perform_health_check(df, date_col, val_col):
     if df[val_col].isnull().any(): issues.append("Missing values in target column.")
     if len(df) < 2: issues.append("Insufficient data for forecasting.")
     return issues
+
+def calculate_insights(hist_data, forecast_data, horizon, curr_sym):
+    """Calculate comprehensive insights from the data"""
+    insights = {
+        'hist_total': hist_data['y'].sum(),
+        'hist_avg': hist_data['y'].mean(),
+        'hist_max': hist_data['y'].max(),
+        'hist_min': hist_data['y'].min(),
+        'forecast_total': forecast_data['yhat'].tail(horizon).sum(),
+        'forecast_avg': forecast_data['yhat'].tail(horizon).mean(),
+        'forecast_max': forecast_data['yhat'].tail(horizon).max(),
+        'forecast_min': forecast_data['yhat'].tail(horizon).min(),
+    }
+    
+    # Calculate growth rate
+    if insights['hist_total'] > 0:
+        insights['growth_rate'] = ((insights['forecast_total'] - insights['hist_total']) / insights['hist_total']) * 100
+    else:
+        insights['growth_rate'] = 0
+    
+    # Calculate daily, weekly, monthly, yearly aggregates from historical data
+    hist_with_date = hist_data.set_index('ds')
+    insights['daily_avg'] = hist_with_date['y'].resample('D').sum().mean()
+    insights['weekly_total'] = hist_with_date['y'].resample('W').sum()
+    insights['monthly_total'] = hist_with_date['y'].resample('MS').sum()
+    insights['yearly_total'] = hist_with_date['y'].resample('YS').sum()
+    
+    return insights
 
 # =================================================================
 # 3. UI LAYOUT & SIDEBAR CONTROL
@@ -202,17 +253,27 @@ with col_left:
                 with st.spinner("AI Engine executing..."):
                     freq_map = {"Yearly": "YS", "Monthly": "MS", "Weekly": "W", "Daily": "D"}
                     f_data, f_model = run_forecast_model(working_df, horizon, freq_map[freq_label])
-                    st.session_state.update({'forecast': f_data, 'model': f_model, 'history': working_df, 'analyzed': True, 'horizon': horizon, 'freq_label': freq_label})
+                    
+                    # Calculate insights
+                    insights = calculate_insights(working_df, f_data, horizon, curr_sym)
+                    
+                    st.session_state.update({
+                        'forecast': f_data, 
+                        'model': f_model, 
+                        'history': working_df, 
+                        'analyzed': True, 
+                        'horizon': horizon, 
+                        'freq_label': freq_label,
+                        'insights': insights
+                    })
             except Exception as e: st.error(f"Computation Error: {e}")
 
 # =================================================================
-# 5. CHAT-STYLE AI ASSISTANT (Fixed with Retry Logic & Error Handling)
+# 5. CHAT-STYLE AI ASSISTANT (FULLY FUNCTIONAL WITH DATA INSIGHTS)
 # =================================================================
 with col_right:
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
     st.subheader("🤖 Pulse AI Analyst")
-    if "messages" not in st.session_state: 
-        st.session_state.messages = []
 
     chat_container = st.container(height=400)
     with chat_container:
@@ -232,26 +293,37 @@ with col_right:
                     with st.chat_message("user"): 
                         st.markdown(query)
 
+                # Get data from session state
                 hist_data = st.session_state['history']
                 forecast_data = st.session_state['forecast']
                 horizon = st.session_state.get('horizon', 12)
                 freq_label = st.session_state.get('freq_label', 'Monthly')
+                insights = st.session_state.get('insights', {})
                 
-                # Simplified and condensed prompt to prevent API bottlenecks
-                hist_summary = f"{curr_sym}{hist_data['y'].sum():,.2f}"
-                forecast_summary = f"{curr_sym}{forecast_data['yhat'].tail(horizon).sum():,.2f}"
-                hist_avg = f"{curr_sym}{hist_data['y'].mean():,.2f}"
-                forecast_avg = f"{curr_sym}{forecast_data['yhat'].tail(horizon).mean():,.2f}"
-                
-                prompt = f"""You are a business analyst for {BRAND_NAME}. 
-Project: {project_name}
-Historical Total: {hist_summary} (Avg: {hist_avg})
-Forecast Total: {forecast_summary} (Avg: {forecast_avg})
-Time Horizon: {horizon} {freq_label.lower()}s
+                # Build comprehensive context for AI
+                context = f"""You are an expert data analyst for {BRAND_NAME}, analyzing project: {project_name}.
+
+HISTORICAL DATA SUMMARY:
+- Total Sales: {curr_sym}{insights.get('hist_total', 0):,.2f}
+- Average Sales: {curr_sym}{insights.get('hist_avg', 0):,.2f}
+- Highest Sales: {curr_sym}{insights.get('hist_max', 0):,.2f}
+- Lowest Sales: {curr_sym}{insights.get('hist_min', 0):,.2f}
+- Daily Average: {curr_sym}{insights.get('daily_avg', 0):,.2f}
+
+FORECAST DATA ({horizon} {freq_label.lower()}s ahead):
+- Projected Total: {curr_sym}{insights.get('forecast_total', 0):,.2f}
+- Projected Average: {curr_sym}{insights.get('forecast_avg', 0):,.2f}
+- Projected Highest: {curr_sym}{insights.get('forecast_max', 0):,.2f}
+- Projected Lowest: {curr_sym}{insights.get('forecast_min', 0):,.2f}
+- Growth Rate: {insights.get('growth_rate', 0):+.2f}%
+
+BREAKDOWN BY PERIOD:
+- Weekly Totals: {[f"{curr_sym}{v:,.2f}" for v in insights.get('weekly_total', [])[:5]]}...
+- Monthly Totals: {[f"{curr_sym}{v:,.2f}" for v in insights.get('monthly_total', [])[:5]]}...
 
 User Question: {query}
 
-Provide a concise, professional analysis (max 150 words). Be specific and data-driven."""
+Provide a detailed, data-driven answer based on the above metrics. Use specific numbers from the data. Be professional and insightful."""
 
                 # Retry logic with exponential backoff
                 max_retries = 3
@@ -261,27 +333,23 @@ Provide a concise, professional analysis (max 150 words). Be specific and data-d
                 while retry_count < max_retries and not success:
                     try:
                         if retry_count > 0:
-                            wait_time = 2 ** retry_count  # Exponential backoff: 2, 4, 8 seconds
+                            wait_time = 2 ** retry_count
                             with st.spinner(f"Retrying AI connection... (Attempt {retry_count + 1}/{max_retries})"):
                                 time.sleep(wait_time)
                         
-                        # Configure generation with timeout settings
-                        generation_config = {
-                            "temperature": 0.7,
-                            "top_p": 0.95,
-                            "top_k": 40,
-                            "max_output_tokens": 500,
-                        }
+                        # Make API call
+                        response = ai_model.generate_content(context)
                         
-                        response = ai_model.generate_content(
-                            prompt,
-                            generation_config=generation_config,
-                            request_options={"timeout": 30}  # 30 second timeout
-                        )
+                        # Extract response text
+                        if hasattr(response, 'text'):
+                            ai_text = response.text
+                        elif hasattr(response, 'parts'):
+                            ai_text = response.parts[0].text
+                        else:
+                            ai_text = str(response)
                         
-                        ai_text = response.text
                         st.session_state.messages.append({"role": "assistant", "content": ai_text})
-                        st.session_state.last_ai_call = time.time()  # Update cooldown
+                        st.session_state.last_ai_call = time.time()
                         success = True
                         st.rerun()
                         
@@ -290,34 +358,59 @@ Provide a concise, professional analysis (max 150 words). Be specific and data-d
                         error_msg = str(e).lower()
                         
                         if retry_count >= max_retries:
-                            # Final failure after all retries
-                            growth_rate = ((forecast_data['yhat'].tail(horizon).sum() - hist_data['y'].sum()) / hist_data['y'].sum() * 100) if hist_data['y'].sum() > 0 else 0
+                            # Provide intelligent fallback based on query
+                            query_lower = query.lower()
                             
-                            fallback_msg = f"""I'm experiencing connectivity issues with the AI engine right now. 
+                            if any(word in query_lower for word in ['sum', 'total', 'revenue', 'sales']):
+                                if 'historical' in query_lower or 'past' in query_lower:
+                                    fallback_msg = f"Based on your historical data for **{project_name}**, the total sales amount to **{curr_sym}{insights.get('hist_total', 0):,.2f}** with an average of **{curr_sym}{insights.get('hist_avg', 0):,.2f}** per period."
+                                else:
+                                    fallback_msg = f"For **{project_name}**, the projected total for the next {horizon} {freq_label.lower()}s is **{curr_sym}{insights.get('forecast_total', 0):,.2f}** (average: **{curr_sym}{insights.get('forecast_avg', 0):,.2f}** per period)."
                             
-However, here's what I can tell you about **{project_name}**:
+                            elif any(word in query_lower for word in ['average', 'mean', 'avg']):
+                                if 'daily' in query_lower:
+                                    fallback_msg = f"The daily average for **{project_name}** is **{curr_sym}{insights.get('daily_avg', 0):,.2f}**."
+                                else:
+                                    fallback_msg = f"Historical average: **{curr_sym}{insights.get('hist_avg', 0):,.2f}** | Projected average: **{curr_sym}{insights.get('forecast_avg', 0):,.2f}**"
+                            
+                            elif any(word in query_lower for word in ['growth', 'trend', 'change']):
+                                growth = insights.get('growth_rate', 0)
+                                fallback_msg = f"**{project_name}** shows a **{growth:+.2f}%** {'growth' if growth > 0 else 'decline'} trend. Historical total: **{curr_sym}{insights.get('hist_total', 0):,.2f}** | Forecast: **{curr_sym}{insights.get('forecast_total', 0):,.2f}**"
+                            
+                            elif any(word in query_lower for word in ['highest', 'maximum', 'peak', 'max']):
+                                fallback_msg = f"Peak performance for **{project_name}**: Historical high of **{curr_sym}{insights.get('hist_max', 0):,.2f}** | Projected high of **{curr_sym}{insights.get('forecast_max', 0):,.2f}**"
+                            
+                            elif any(word in query_lower for word in ['lowest', 'minimum', 'min']):
+                                fallback_msg = f"Lowest points for **{project_name}**: Historical low of **{curr_sym}{insights.get('hist_min', 0):,.2f}** | Projected low of **{curr_sym}{insights.get('forecast_min', 0):,.2f}**"
+                            
+                            else:
+                                fallback_msg = f"""I'm experiencing connectivity issues, but here's a summary for **{project_name}**:
 
-📊 **Historical Performance:** {hist_summary}  
-📈 **Projected Performance:** {forecast_summary}  
-💹 **Growth Trend:** {"Positive momentum" if growth_rate > 0 else "Declining trend"} ({growth_rate:+.1f}%)  
-⏱️ **Forecast Period:** {horizon} {freq_label.lower()}s
+📊 **Historical:** Total: {curr_sym}{insights.get('hist_total', 0):,.2f} | Avg: {curr_sym}{insights.get('hist_avg', 0):,.2f}
+📈 **Forecast ({horizon} {freq_label.lower()}s):** Total: {curr_sym}{insights.get('forecast_total', 0):,.2f} | Avg: {curr_sym}{insights.get('forecast_avg', 0):,.2f}
+💹 **Growth:** {insights.get('growth_rate', 0):+.2f}%
 
-Please try your question again in a moment, or contact support if this persists."""
+Try asking more specific questions like: "What's the average daily sales?" or "Show me the total forecast"."""
                             
                             st.session_state.messages.append({"role": "assistant", "content": fallback_msg})
-                            st.error(f"⚠️ AI connection failed after {max_retries} attempts. Using fallback response.")
+                            st.warning(f"⚠️ AI connection failed. Showing data-based response.")
                             st.session_state.last_ai_call = time.time()
                             st.rerun()
                         else:
                             # Show retry progress
                             if "429" in error_msg or "quota" in error_msg or "rate" in error_msg:
-                                st.warning(f"⏳ Rate limit reached. Retrying in {2 ** retry_count} seconds... ({retry_count}/{max_retries})")
+                                st.warning(f"⏳ Rate limit reached. Retrying in {2 ** retry_count} seconds...")
                             elif "timeout" in error_msg:
-                                st.warning(f"⏳ Request timeout. Retrying... ({retry_count}/{max_retries})")
+                                st.warning(f"⏳ Request timeout. Retrying...")
                             else:
-                                st.warning(f"⏳ Connection issue. Retrying... ({retry_count}/{max_retries})")
+                                st.warning(f"⏳ Connection issue: {str(e)[:100]}. Retrying...")
+    
+    elif st.session_state.get('analyzed') and not ai_model:
+        st.error("❌ AI Engine unavailable. Please check your GOOGLE_API_KEY in Streamlit Secrets.")
+        st.info("💡 Go to: Settings → Secrets → Add GOOGLE_API_KEY")
     else: 
-        st.info("Process data to unlock AI chat.")
+        st.info("📊 Upload data and click 'Process Intelligence' to unlock AI chat.")
+    
     st.markdown('</div>', unsafe_allow_html=True)
 
 # =================================================================
@@ -385,7 +478,7 @@ if st.session_state.get('analyzed'):
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 7. FOOTER & FEEDBACK SYSTEM (Profile Updated)
+# 7. FOOTER & FEEDBACK SYSTEM
 # =================================================================
 st.divider()
 f_left, f_right = st.columns(2)
