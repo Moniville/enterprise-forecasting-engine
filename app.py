@@ -17,18 +17,20 @@ BRAND_NAME = "Hope Tech"
 st.set_page_config(page_title=f"{PRODUCT_NAME} | {BRAND_NAME}", layout="wide")
 
 # --- GOOGLE ANALYTICS INTEGRATION ---
-# Measurement ID: G-2XRSHF2S9F
-ga_code = """
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-2XRSHF2S9F"></script>
+GA_ID = "G-2XRSHF2S9F"
+
+ga_code = f"""
+    <script async src="https://www.googletagmanager.com/gtag/js?id={GA_ID}"></script>
     <script>
-      window.parent.dataLayer = window.parent.dataLayer || [];
-      function gtag(){window.parent.dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'G-2XRSHF2S9F');
+        window.parent.dataLayer = window.parent.dataLayer || [];
+        function gtag(){{window.parent.dataLayer.push(arguments);}}
+        gtag('js', new Date());
+        gtag('config', '{GA_ID}');
     </script>
 """
-# Using a 0px height iframe to fire the script
-st.components.v1.html(ga_code, height=0, width=0)
+# We use st.components.v1.html to inject it safely
+import streamlit.components.v1 as components
+components.html(ga_code, height=0)
 
 # Professional Dark-Mode Styling
 st.markdown("""
@@ -322,4 +324,5 @@ with f_right:
 # Final Bottom Support Banner
 st.markdown(f'<div class="support-bar">💖 <b>Empower Hope Tech:</b> Your support drives our innovation. <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline; margin-left: 10px;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
+
 
