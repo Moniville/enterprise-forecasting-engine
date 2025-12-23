@@ -10,17 +10,21 @@ import google.generativeai as genai
 from supabase import create_client, Client
 import streamlit.components.v1 as components
 
-# --- 0. BRANDING & UI CONFIG ---
+# =================================================================
+# 0. BRANDING & UI CONFIGURATION (Recruiter-Facing Design)
+# =================================================================
 PRODUCT_NAME = "Pulse AI"
 BRAND_NAME = "Hope Tech"
 
+# Page config ensures the dashboard uses the full screen width
 st.set_page_config(
     page_title=f"{PRODUCT_NAME} | {BRAND_NAME}", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- 0.2 BULLETPROOF GOOGLE ANALYTICS ---
+# --- GOOGLE ANALYTICS INTEGRATION ---
+# Tracks user sessions to provide engagement metrics for product owners.
 GA_ID = "G-2XRSHF2S9F"
 ga_injection = f"""
     <script>
@@ -36,12 +40,15 @@ ga_injection = f"""
 """
 components.html(ga_injection, height=0, width=0)
 
-# CUSTOM CSS: Unified Dark Theme & Visibility Fixes
+# --- CUSTOM CSS: UNIFIED DARK THEME ---
+# Provides a high-end "SaaS" look with glassmorphism and high-visibility buttons.
 st.markdown("""
     <style>
+        /* Force background and text colors for consistent Dark Mode */
         header[data-testid="stHeader"] { background-color: #0e1117 !important; }
         .stAppViewMain, .stApp, [data-testid="stAppViewContainer"] { background-color: #0e1117 !important; color: #ffffff !important; }
         
+        /* Styled Action Buttons */
         button[kind="primary"], button[kind="secondary"], .stButton > button, div[data-testid="stForm"] button {
             background-color: #1a1c23 !important;
             color: #ffffff !important;
@@ -52,9 +59,11 @@ st.markdown("""
         }
         button:hover { background-color: #00B0F6 !important; color: #0e1117 !important; box-shadow: 0 0 15px #00B0F6 !important; }
 
+        /* Typography fixes for visibility */
         h1, h2, h3, h4, h5, h6, p, label, .stMarkdown { color: #ffffff !important; opacity: 1 !important; }
         [data-testid="stSidebar"] { background-color: #1a1c23 !important; border-right: 1px solid rgba(0, 176, 246, 0.2) !important; }
 
+        /* Custom Component Styling */
         .support-bar {
             background: linear-gradient(90deg, #00B0F6, #00FFCC);
             padding: 12px; border-radius: 8px; text-align: center;
@@ -66,25 +75,34 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 1. SYSTEM INITIALIZATION ---
+# =================================================================
+# 1. SYSTEM INITIALIZATION (API & DB Connections)
+# =================================================================
 def init_connections():
+    """Initializes cloud services: Supabase for feedback and Google Gemini for AI analysis."""
     sb, ai = None, None
     try:
+        # Connect to Supabase Backend
         if "SUPABASE_URL" in st.secrets and "SUPABASE_KEY" in st.secrets:
             sb = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+        
+        # Connect to Google Generative AI
         if "GOOGLE_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
             ai = genai.GenerativeModel("gemini-1.5-flash")
             st.sidebar.success("⚡ AI Engine Linked: Gemini 1.5 Flash")
-    except Exception:
+    except Exception as e:
         st.sidebar.warning("System restricted: AI connectivity limited.")
     return sb, ai
 
 supabase, ai_model = init_connections()
 
-# --- 2. FORECASTING & HEALTH TOOLS ---
+# =================================================================
+# 2. ANALYTICS & HEALTH TOOLS (The Science)
+# =================================================================
 @st.cache_resource
 def run_forecast_model(df, periods, freq):
+    """Executes Meta's Prophet algorithm for time-series projection."""
     model = Prophet(yearly_seasonality=True, weekly_seasonality=True, daily_seasonality=False)
     model.fit(df)
     future = model.make_future_dataframe(periods=periods, freq=freq)
@@ -92,13 +110,16 @@ def run_forecast_model(df, periods, freq):
     return forecast, model
 
 def perform_health_check(df, date_col, val_col):
+    """Performs data quality audits to ensure mathematical validity."""
     issues = []
     if df[date_col].isnull().any(): issues.append("Missing dates detected.")
     if df[val_col].isnull().any(): issues.append("Missing values in target column.")
     if len(df) < 2: issues.append("Insufficient data for forecasting.")
     return issues
 
-# --- 3. UI LAYOUT & BRANDING ---
+# =================================================================
+# 3. UI LAYOUT & SIDEBAR CONTROL
+# =================================================================
 if os.path.exists("assets/Hope tech 2.png"):
     st.image("assets/Hope tech 2.png", width=120)
 
@@ -109,17 +130,19 @@ with st.sidebar:
     if os.path.exists(logo_path):
         col1, col2, col3 = st.columns([1, 3, 1])
         with col2: st.image(logo_path, use_container_width=True)
-    else: st.markdown(f"## 🛡️ {BRAND_NAME}")
+    else: 
+        st.markdown(f"## 🛡️ {BRAND_NAME}")
     
     st.divider()
     st.header("Project Configuration")
     
-    project_name = st.text_input("Project Namespace:", value="Your Project Name")
-    st.caption("💡 *Please remember to name your specific project above.*")
+    project_name = st.text_input("Project Namespace:", value="Revenue Forecast 2024")
+    st.caption("💡 *Recruiters: Name your specific project above for personalized AI analysis.*")
     
     currency_lookup = {"USD ($)": "$", "NGN (₦)": "₦", "EUR (€)": "€", "GBP (£)": "£", "GHS (GH₵)": "GH₵"}
     selected_curr_name = st.selectbox("Operational Currency:", options=list(currency_lookup.keys()))
     curr_sym = currency_lookup[selected_curr_name]
+    
     input_method = st.radio("Inbound Data Source:", ["CSV Upload (Recommended)", "Manual Entry"])
     
     st.divider()
@@ -129,6 +152,7 @@ with st.sidebar:
         for key in list(st.session_state.keys()): del st.session_state[key]
         st.rerun()
 
+    # Developer/Admin Area
     with st.expander("🔒 Developer Access"):
         admin_key = st.text_input("Security Key", type="password")
         is_admin = (admin_key == "Ibiene2003#")
@@ -143,7 +167,9 @@ if is_admin:
     if st.button("End Session"): st.rerun()
     st.stop()
 
-# --- 4. DATA PROCESSING ---
+# =================================================================
+# 4. DATA PROCESSING & INGESTION
+# =================================================================
 st.markdown(f'<p class="main-title">{PRODUCT_NAME} Analytics Engine</p>', unsafe_allow_html=True)
 col_left, col_right = st.columns([2.2, 1.3])
 
@@ -165,7 +191,7 @@ with col_left:
                 for issue in health_issues: st.warning(f"⚠️ {issue}")
             else: st.success("✅ Data Integrity Verified.")
     else:
-        manual = st.text_area("Paste comma-separated values:")
+        manual = st.text_area("Paste comma-separated values (e.g., 100, 200, 150):")
         if manual: 
             try:
                 vals = [float(x.strip()) for x in manual.split(",") if x.strip()]
@@ -195,7 +221,9 @@ with col_left:
                     st.session_state.update({'forecast': f_data, 'model': f_model, 'history': working_df, 'analyzed': True})
             except Exception as e: st.error(f"Computation Error: {e}")
 
-# --- 5. CHAT-STYLE AI ASSISTANT ---
+# =================================================================
+# 5. CHAT-STYLE AI ASSISTANT (NLP Layer)
+# =================================================================
 with col_right:
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
     st.subheader("🤖 Pulse AI Analyst")
@@ -215,6 +243,7 @@ with col_right:
             hist_data = st.session_state['history']
             forecast_data = st.session_state['forecast']
             
+            # --- INTEGRATED AI PROMPT (Restoring User Query context) ---
             prompt = f"""
             Identify as a conversational AI analyst for {BRAND_NAME}. 
             The project being discussed is: {project_name}.
@@ -223,25 +252,28 @@ with col_right:
             - Historical Total: {curr_sym}{hist_data['y'].sum():,.2f}
             - Forecast Total: {curr_sym}{forecast_data['yhat'].tail(horizon).sum():,.2f}
             - Data Range: {hist_data['ds'].min().date()} to {hist_data['ds'].max().date()}
+            
+            USER QUESTION: {query}
 
-            Answer professionally. Use only text. No greetings.
+            Answer professionally. Use only text. No greetings. Reference the project name in your response.
             """
             try:
                 response = ai_model.generate_content(prompt)
                 ai_text = response.text
                 st.session_state.messages.append({"role": "assistant", "content": ai_text})
-                with chat_container:
-                    with st.chat_message("assistant"): st.markdown(ai_text)
+                st.rerun() # Refresh to show message
             except: st.error("AI node is momentarily busy.")
     else: st.info("Process data to unlock AI chat.")
     st.markdown('</div>', unsafe_allow_html=True)
 
-# --- 6. VISUALIZATION DASHBOARD ---
+# =================================================================
+# 6. VISUALIZATION DASHBOARD (Logic & Reporting)
+# =================================================================
 if st.session_state.get('analyzed'):
     hist, fcst, model = st.session_state['history'], st.session_state['forecast'], st.session_state['model']
     future_only = fcst.tail(horizon)
     
-    # --- CRITICAL FIX: PRE-CALCULATE ANOMALIES FOR ALL VIEWS ---
+    # Pre-calculating anomalies to use across all dashboard views
     perf = fcst.set_index('ds')[['yhat_lower', 'yhat_upper']].join(hist.set_index('ds'))
     anoms = perf[(perf['y'] > perf['yhat_upper']) | (perf['y'] < perf['yhat_lower'])]
     
@@ -289,12 +321,12 @@ if st.session_state.get('analyzed'):
     fig.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='#0e1117', height=450, margin=dict(l=20, r=20, t=20, b=20), font=dict(size=14, color="white"))
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- 6.1 ENHANCED NATURAL LANGUAGE REPORT ---
+    # --- 6.1 EXECUTIVE SUMMARY (Natural Language Generator) ---
     start_val, end_val = future_only['yhat'].iloc[0], future_only['yhat'].iloc[-1]
     growth_rate = ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0
     total_vol = future_only['yhat'].sum()
     growth_desc = "upward momentum" if growth_rate > 0 else "a cooling period"
-    volatility = "highly consistent" if len(anoms) < 3 else "showing some unexpected volatility"
+    volatility = "highly consistent" if len(anoms) < 3 else "showing unexpected volatility"
     
     st.markdown(f"""
     <div class="interpretation-box">
@@ -308,7 +340,9 @@ if st.session_state.get('analyzed'):
     </div>
     """, unsafe_allow_html=True)
 
-# --- 7. FOOTER & FEEDBACK ---
+# =================================================================
+# 7. FOOTER & FEEDBACK SYSTEM
+# =================================================================
 st.markdown('<div class="footer-section">', unsafe_allow_html=True)
 f_left, f_right = st.columns(2)
 with f_left:
