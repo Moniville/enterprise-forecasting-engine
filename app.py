@@ -79,12 +79,22 @@ def init_connections():
         if "GOOGLE_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
             ai = genai.GenerativeModel("gemini-1.5-flash")
-            st.sidebar.success("⚡ AI Engine Linked: Gemini 1.5 Flash")
+            # Test connection
+            try:
+                test = ai.generate_content("test", request_options={"timeout": 10})
+                st.sidebar.success("⚡ AI Engine Linked: Gemini 1.5 Flash")
+            except Exception as e:
+                st.sidebar.warning(f"⚠️ AI Engine: Connection unstable")
+                ai = None
     except Exception as e:
         st.sidebar.warning("System restricted: AI connectivity limited.")
     return sb, ai
 
 supabase, ai_model = init_connections()
+
+# Initialize session state for chat cooldown
+if "last_ai_call" not in st.session_state:
+    st.session_state.last_ai_call = 0
 
 # =================================================================
 # 2. ANALYTICS & HEALTH TOOLS
@@ -192,43 +202,120 @@ with col_left:
                 with st.spinner("AI Engine executing..."):
                     freq_map = {"Yearly": "YS", "Monthly": "MS", "Weekly": "W", "Daily": "D"}
                     f_data, f_model = run_forecast_model(working_df, horizon, freq_map[freq_label])
-                    st.session_state.update({'forecast': f_data, 'model': f_model, 'history': working_df, 'analyzed': True})
+                    st.session_state.update({'forecast': f_data, 'model': f_model, 'history': working_df, 'analyzed': True, 'horizon': horizon, 'freq_label': freq_label})
             except Exception as e: st.error(f"Computation Error: {e}")
 
 # =================================================================
-# 5. CHAT-STYLE AI ASSISTANT (Fixed Node Busy Logic)
+# 5. CHAT-STYLE AI ASSISTANT (Fixed with Retry Logic & Error Handling)
 # =================================================================
 with col_right:
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
     st.subheader("🤖 Pulse AI Analyst")
-    if "messages" not in st.session_state: st.session_state.messages = []
+    if "messages" not in st.session_state: 
+        st.session_state.messages = []
 
     chat_container = st.container(height=400)
     with chat_container:
         for message in st.session_state.messages:
-            with st.chat_message(message["role"]): st.markdown(message["content"])
+            with st.chat_message(message["role"]): 
+                st.markdown(message["content"])
 
     if st.session_state.get('analyzed') and ai_model:
         if query := st.chat_input("Ask about your projections..."):
-            st.session_state.messages.append({"role": "user", "content": query})
-            with chat_container:
-                with st.chat_message("user"): st.markdown(query)
+            # Check cooldown (prevent spam - 2 seconds between requests)
+            current_time = time.time()
+            if current_time - st.session_state.last_ai_call < 2:
+                st.warning("⏳ Please wait a moment before sending another message.")
+            else:
+                st.session_state.messages.append({"role": "user", "content": query})
+                with chat_container:
+                    with st.chat_message("user"): 
+                        st.markdown(query)
 
-            hist_data = st.session_state['history']
-            forecast_data = st.session_state['forecast']
-            
-            # Simplified prompt to prevent API bottlenecks
-            prompt = f"As an analyst for {BRAND_NAME}, interpret project '{project_name}'. Hist Total: {curr_sym}{hist_data['y'].sum():,.2f}. Forecast Total: {curr_sym}{forecast_data['yhat'].tail(horizon).sum():,.2f}. User: {query}. Keep it professional."
+                hist_data = st.session_state['history']
+                forecast_data = st.session_state['forecast']
+                horizon = st.session_state.get('horizon', 12)
+                freq_label = st.session_state.get('freq_label', 'Monthly')
+                
+                # Simplified and condensed prompt to prevent API bottlenecks
+                hist_summary = f"{curr_sym}{hist_data['y'].sum():,.2f}"
+                forecast_summary = f"{curr_sym}{forecast_data['yhat'].tail(horizon).sum():,.2f}"
+                hist_avg = f"{curr_sym}{hist_data['y'].mean():,.2f}"
+                forecast_avg = f"{curr_sym}{forecast_data['yhat'].tail(horizon).mean():,.2f}"
+                
+                prompt = f"""You are a business analyst for {BRAND_NAME}. 
+Project: {project_name}
+Historical Total: {hist_summary} (Avg: {hist_avg})
+Forecast Total: {forecast_summary} (Avg: {forecast_avg})
+Time Horizon: {horizon} {freq_label.lower()}s
 
-            try:
-                time.sleep(1) 
-                response = ai_model.generate_content(prompt)
-                ai_text = response.text
-                st.session_state.messages.append({"role": "assistant", "content": ai_text})
-                st.rerun()
-            except Exception as e:
-                st.warning("AI Node is busy. Refining the connection... please re-send your question.")
-                st.sidebar.error(f"AI Debug: {e}")
+User Question: {query}
+
+Provide a concise, professional analysis (max 150 words). Be specific and data-driven."""
+
+                # Retry logic with exponential backoff
+                max_retries = 3
+                retry_count = 0
+                success = False
+                
+                while retry_count < max_retries and not success:
+                    try:
+                        if retry_count > 0:
+                            wait_time = 2 ** retry_count  # Exponential backoff: 2, 4, 8 seconds
+                            with st.spinner(f"Retrying AI connection... (Attempt {retry_count + 1}/{max_retries})"):
+                                time.sleep(wait_time)
+                        
+                        # Configure generation with timeout settings
+                        generation_config = {
+                            "temperature": 0.7,
+                            "top_p": 0.95,
+                            "top_k": 40,
+                            "max_output_tokens": 500,
+                        }
+                        
+                        response = ai_model.generate_content(
+                            prompt,
+                            generation_config=generation_config,
+                            request_options={"timeout": 30}  # 30 second timeout
+                        )
+                        
+                        ai_text = response.text
+                        st.session_state.messages.append({"role": "assistant", "content": ai_text})
+                        st.session_state.last_ai_call = time.time()  # Update cooldown
+                        success = True
+                        st.rerun()
+                        
+                    except Exception as e:
+                        retry_count += 1
+                        error_msg = str(e).lower()
+                        
+                        if retry_count >= max_retries:
+                            # Final failure after all retries
+                            growth_rate = ((forecast_data['yhat'].tail(horizon).sum() - hist_data['y'].sum()) / hist_data['y'].sum() * 100) if hist_data['y'].sum() > 0 else 0
+                            
+                            fallback_msg = f"""I'm experiencing connectivity issues with the AI engine right now. 
+                            
+However, here's what I can tell you about **{project_name}**:
+
+📊 **Historical Performance:** {hist_summary}  
+📈 **Projected Performance:** {forecast_summary}  
+💹 **Growth Trend:** {"Positive momentum" if growth_rate > 0 else "Declining trend"} ({growth_rate:+.1f}%)  
+⏱️ **Forecast Period:** {horizon} {freq_label.lower()}s
+
+Please try your question again in a moment, or contact support if this persists."""
+                            
+                            st.session_state.messages.append({"role": "assistant", "content": fallback_msg})
+                            st.error(f"⚠️ AI connection failed after {max_retries} attempts. Using fallback response.")
+                            st.session_state.last_ai_call = time.time()
+                            st.rerun()
+                        else:
+                            # Show retry progress
+                            if "429" in error_msg or "quota" in error_msg or "rate" in error_msg:
+                                st.warning(f"⏳ Rate limit reached. Retrying in {2 ** retry_count} seconds... ({retry_count}/{max_retries})")
+                            elif "timeout" in error_msg:
+                                st.warning(f"⏳ Request timeout. Retrying... ({retry_count}/{max_retries})")
+                            else:
+                                st.warning(f"⏳ Connection issue. Retrying... ({retry_count}/{max_retries})")
     else: 
         st.info("Process data to unlock AI chat.")
     st.markdown('</div>', unsafe_allow_html=True)
@@ -237,7 +324,12 @@ with col_right:
 # 6. VISUALIZATION DASHBOARD
 # =================================================================
 if st.session_state.get('analyzed'):
-    hist, fcst, model = st.session_state['history'], st.session_state['forecast'], st.session_state['model']
+    hist = st.session_state['history']
+    fcst = st.session_state['forecast']
+    model = st.session_state['model']
+    horizon = st.session_state.get('horizon', 12)
+    freq_label = st.session_state.get('freq_label', 'Monthly')
+    
     future_only = fcst.tail(horizon)
     perf = fcst.set_index('ds')[['yhat_lower', 'yhat_upper']].join(hist.set_index('ds'))
     anoms = perf[(perf['y'] > perf['yhat_upper']) | (perf['y'] < perf['yhat_lower'])]
