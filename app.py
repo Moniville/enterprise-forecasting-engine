@@ -11,6 +11,15 @@ from supabase import create_client, Client
 import streamlit.components.v1 as components
 import math  # Added for safe_format
 
+# Define safe_format early
+def safe_format(value):
+    if value is None:
+        return 0
+    if isinstance(value, float):
+        if math.isnan(value):
+            return 0
+    return value
+
 # =================================================================
 # 0. BRANDING & UI CONFIGURATION (Recruiter-Facing Design)
 # =================================================================
@@ -562,3 +571,4 @@ def safe_format(value):
             return 0
     # For other types, just return the value
     return value
+
