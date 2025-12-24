@@ -475,13 +475,14 @@ Try asking: "What's the sum of monthly sales?" or "Show me the monthly breakdown
         st.info("📊 Upload data and click 'Process Intelligence' to unlock AI chat.")
     st.markdown('</div>', unsafe_allow_html=True)
 
-# =================================================================
 # 6. VISUALIZATION DASHBOARD
 # =================================================================
 if st.session_state.get('analyzed'):
     # Retrieve dataframes and insights
     hist = st.session_state['history']
-    fcst = st.session_state['forecast']
+    # Initialize forecast and model from session state
+    forecast = st.session_state.get('forecast', pd.DataFrame())
+    model = st.session_state.get('model', None)
     insights = st.session_state['insights']
     project_name = st.session_state.get('project_name', 'Your Project')
     horizon = st.session_state.get('horizon', 12)
@@ -489,14 +490,18 @@ if st.session_state.get('analyzed'):
     curr_sym = st.session_state.get('curr_sym', '$')
 
     # Generate forecast plot
-    future_only = fcst.tail(horizon)
-    perf = fcst.set_index('ds')[['yhat', 'yhat_lower', 'yhat_upper']].join(hist.set_index('ds'))
-    anoms = perf[(perf['y'] > perf['yhat_upper']) | (perf['y'] < perf['yhat_lower'])]
+    if not forecast.empty:
+        future_only = forecast.tail(horizon)
+        perf = forecast.set_index('ds')[['yhat', 'yhat_lower', 'yhat_upper']].join(hist.set_index('ds'))
+        anoms = perf[(perf['y'] > perf['yhat_upper']) | (perf['y'] < perf['yhat_lower'])]
+    else:
+        future_only = pd.DataFrame()
+        anoms = pd.DataFrame()
 
     view = st.radio("Dashboard Perspective:", ["Forecast", "Anomalies", "Accuracy", "Monthly", "Weekly", "Annual"], horizontal=True)
     fig = go.Figure()
 
-    if view == "Forecast":
+    if view == "Forecast" and not future_only.empty:
         fig.add_trace(go.Scatter(
             x=future_only['ds'], y=future_only['yhat'], mode='lines+markers+text',
             text=[f"{curr_sym}{v:,.0f}" for v in future_only['yhat']],
@@ -505,7 +510,7 @@ if st.session_state.get('analyzed'):
             x=future_only['ds'], y=future_only['yhat_lower'], fill='tonexty', fillcolor='rgba(0,176,246,0.1)',
             line=dict(width=0), name="Confidence Interval"))
 
-    elif view == "Anomalies":
+    elif view == "Anomalies" and not anoms.empty:
         a1, a2, a3 = st.columns(3)
         a1.metric("Irregularities Found", len(anoms))
         a2.metric("Highest Spike", f"{curr_sym}{hist['y'].max():,.2f}")
@@ -514,8 +519,8 @@ if st.session_state.get('analyzed'):
         fig.add_trace(go.Scatter(x=anoms.index, y=anoms['y'], mode='markers',
                                  marker=dict(color='red', size=15, symbol='x'), name='Anomalous Point'))
 
-    elif view == "Accuracy":
-        hist_preds = fcst[fcst['ds'].isin(hist['ds'])]
+    elif view == "Accuracy" and model is not None:
+        hist_preds = forecast[forecast['ds'].isin(hist['ds'])]
         hist['ma'] = hist['y'].rolling(window=ma_window).mean()
         fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Actual', opacity=0.4))
         fig.add_trace(go.Scatter(x=hist['ds'], y=hist['ma'], name='Trend', line=dict(color='#00FFCC', width=5)))
@@ -621,6 +626,7 @@ with f_right:
                 except: st.error("Database submission failed.")
 
 st.markdown(f'<div class="support-bar">💖 <b>Empower Hope Tech:</b> <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
+
 
 
 
