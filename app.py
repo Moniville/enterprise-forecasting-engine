@@ -18,7 +18,10 @@ def safe_format(value):
     if isinstance(value, float):
         if math.isnan(value):
             return 0
-    return value
+    try:
+        return float(value)
+    except:
+        return 0
 
 # =================================================================
 # 0. BRANDING & UI CONFIGURATION (Recruiter-Facing Design)
@@ -571,4 +574,5 @@ def safe_format(value):
             return 0
     # For other types, just return the value
     return value
+
 
