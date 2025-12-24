@@ -6,10 +6,10 @@ from datetime import datetime
 import io
 import time
 import os
+import math  # For safe_format
 import google.generativeai as genai
 from supabase import create_client, Client
 import streamlit.components.v1 as components
-import math  # Added for safe_format
 
 # Define safe_format early
 def safe_format(value):
@@ -200,7 +200,7 @@ with st.sidebar:
     project_name = st.text_input("Project Namespace:", value="Your Project Name")
     st.caption("💡 *Please remember to name your specific project above.*")
     
-    currency_lookup = {"USD ($)": "$", "NGN (₦)": "₦", "EUR (€)": "€", "GBP (£)": "£", "GHS (GH₵)": "GH₵"}
+    currency_lookup = {"USD ($)": "$", "NGN (₦)": "₦", "EUR (€)": "€", "GBP (£)": "£", "GHS (GH₵)": "G₵"}
     selected_curr_name = st.selectbox("Operational Currency:", options=list(currency_lookup.keys()))
     curr_sym = currency_lookup[selected_curr_name]
     
@@ -531,6 +531,7 @@ if st.session_state.get('analyzed'):
     start_val, end_val = future_only['yhat'].iloc[0], future_only['yhat'].iloc[-1]
     growth_rate = ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0
     total_vol = future_only['yhat'].sum()
+    # Enhanced Executive Summary
     st.markdown(f"""
     <div class="interpretation-box">
         <b>🔍 Executive Summary for {project_name}</b><br>
@@ -575,4 +576,4 @@ def safe_format(value):
     # For other types, just return the value
     return value
 
-
+# -- End of your full code --
