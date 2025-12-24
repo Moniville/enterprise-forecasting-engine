@@ -291,7 +291,7 @@ with col_right:
     st.subheader("🤖 Pulse AI Analyst")
 
      # Add this line to notify users about AI unavailability
-    st.info("🤖 AI is currently not available at the moment.")
+    st.info("Sorry. 🤖 AI is currently not reliable at the moment. /n We are working on it....")
     
     chat_container = st.container(height=400)
     with chat_container:
@@ -621,4 +621,5 @@ with f_right:
                 except: st.error("Database submission failed.")
 
 st.markdown(f'<div class="support-bar">💖 <b>Empower Hope Tech:</b> <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
+
 
