@@ -309,19 +309,25 @@ with col_right:
                 freq_label = st.session_state.get('freq_label', 'Monthly')
                 insights = st.session_state.get('insights', {})
 
+                # Helper function to safely format numbers
+                def safe_format(value):
+                    if pd.isnull(value):
+                        return 0
+                    return value
+
                 # Build detailed context
-                monthly_details = "\n".join([f"  - {month}: {curr_sym}{value:,.2f}" 
+                monthly_details = "\n".join([f"  - {month}: {curr_sym}{safe_format(value):,.2f}" 
                                             for month, value in insights.get('monthly_breakdown', {}).items()])
-                weekly_details = "\n".join([f"  - {week}: {curr_sym}{value:,.2f}" 
+                weekly_details = "\n".join([f"  - {week}: {curr_sym}{safe_format(value):,.2f}" 
                                            for week, value in list(insights.get('weekly_breakdown', {}).items())[:10]])
                 context = f"""You are an expert data analyst for {BRAND_NAME}, analyzing project: {project_name}.
 
 HISTORICAL DATA SUMMARY:
-- Total Sales: {curr_sym}{insights.get('hist_total', 0):,.2f}
-- Average Sales: {curr_sym}{insights.get('hist_avg', 0):,.2f}
-- Highest Sales: {curr_sym}{insights.get('hist_max', 0):,.2f}
-- Lowest Sales: {curr_sym}{insights.get('hist_min', 0):,.2f}
-- Daily Average: {curr_sym}{insights.get('daily_avg', 0):,.2f}
+- Total Sales: {curr_sym}{safe_format(insights.get('hist_total', 0)):,.2f}
+- Average Sales: {curr_sym}{safe_format(insights.get('hist_avg', 0)):,.2f}
+- Highest Sales: {curr_sym}{safe_format(insights.get('hist_max', 0)):,.2f}
+- Lowest Sales: {curr_sym}{safe_format(insights.get('hist_min', 0)):,.2f}
+- Daily Average: {curr_sym}{safe_format(insights.get('daily_avg', 0)):,.2f}
 
 DETAILED MONTHLY BREAKDOWN:
 {monthly_details}
@@ -330,10 +336,10 @@ DETAILED WEEKLY BREAKDOWN (First 10 weeks):
 {weekly_details}
 
 FORECAST DATA ({horizon} {freq_label.lower()}s ahead):
-- Projected Total: {curr_sym}{insights.get('forecast_total', 0):,.2f}
-- Projected Average: {curr_sym}{insights.get('forecast_avg', 0):,.2f}
-- Projected Highest: {curr_sym}{insights.get('forecast_max', 0):,.2f}
-- Projected Lowest: {curr_sym}{insights.get('forecast_min', 0):,.2f}
+- Projected Total: {curr_sym}{safe_format(insights.get('forecast_total', 0)):,.2f}
+- Projected Average: {curr_sym}{safe_format(insights.get('forecast_avg', 0)):,.2f}
+- Projected Highest: {curr_sym}{safe_format(insights.get('forecast_max', 0)):,.2f}
+- Projected Lowest: {curr_sym}{safe_format(insights.get('forecast_min', 0)):,.2f}
 - Growth Rate: {insights.get('growth_rate', 0):+.2f}%
 
 User Question: {query}
@@ -417,7 +423,7 @@ INSTRUCTIONS:
 
                             elif any(word in query_lower for word in ['growth', 'trend', 'change']):
                                 growth = insights.get('growth_rate', 0)
-                                fallback_msg = f"**{project_name}** shows a **{growth:+.2f}%** {'growth' if growth > 0 else 'decline'} trend. Historical total: **{curr_sym}{insights.get('hist_total', 0):,.2f}** | Forecast: **{curr_sym}{insights.get('forecast_total', 0):,.2f}**"
+                                fallback_msg = f"**{project_name}** shows a **{growth:+.2f}%** {'growth' if growth > 0 else 'a decline'} trend. Historical total: **{curr_sym}{insights.get('hist_total', 0):,.2f}** | Forecast: **{curr_sym}{insights.get('forecast_total', 0):,.2f}**"
 
                             elif any(word in query_lower for word in ['highest', 'maximum', 'peak', 'max']):
                                 fallback_msg = f"Peak performance for **{project_name}**: Historical high of **{curr_sym}{insights.get('hist_max', 0):,.2f}** | Projected high of **{curr_sym}{insights.get('forecast_max', 0):,.2f}**"
