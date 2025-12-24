@@ -167,17 +167,9 @@ def calculate_insights(hist_data, forecast_data, horizon, curr_sym):
     # Calculate daily, weekly, monthly, yearly aggregates from historical data
     hist_with_date = hist_data.set_index('ds')
     insights['daily_avg'] = hist_with_date['y'].resample('D').mean()
-    insights['weekly_totals'] = hist_with_date['y'].resample('W').sum().to_dict()
-    insights['monthly_totals'] = hist_with_date['y'].resample('MS').sum().to_dict()
-    insights['yearly_totals'] = hist_with_date['y'].resample('YS').sum().to_dict()
-    
-    # Calculate individual month names and values for clarity
-    monthly_data = hist_with_date['y'].resample('MS').sum()
-    insights['monthly_breakdown'] = {date.strftime('%B %Y'): value for date, value in monthly_data.items()}
-    
-    # Weekly breakdown
-    weekly_data = hist_with_date['y'].resample('W').sum()
-    insights['weekly_breakdown'] = {f"Week of {date.strftime('%Y-%m-%d')}": value for date, value in weekly_data.items()}
+    insights['weekly_breakdown'] = {f"Week of {date.strftime('%Y-%m-%d')}": value for date, value in hist_with_date['y'].resample('W').sum().items()}
+    insights['monthly_breakdown'] = {date.strftime('%B %Y'): value for date, value in hist_with_date['y'].resample('MS').sum().items()}
+    insights['yearly_breakdown'] = {date.strftime('%Y'): value for date, value in hist_with_date['y'].resample('YS').sum().items()}
     
     return insights
 
@@ -312,8 +304,8 @@ with col_right:
                     st.markdown(query)
 
                 # Retrieve data for context
-                hist_data = st.session_state['history']
-                forecast_data = st.session_state['forecast']
+                hist = st.session_state['history']
+                forecast = st.session_state['forecast']
                 horizon = st.session_state.get('horizon', 12)
                 freq_label = st.session_state.get('freq_label', 'Monthly')
                 insights = st.session_state.get('insights', {})
@@ -483,15 +475,15 @@ if st.session_state.get('analyzed'):
     # Retrieve dataframes and insights
     hist = st.session_state['history']
     fcst = st.session_state['forecast']
-    model = st.session_state['model']
+    insights = st.session_state['insights']
+    project_name = st.session_state.get('project_name', 'Your Project')
     horizon = st.session_state.get('horizon', 12)
     freq_label = st.session_state.get('freq_label', 'Monthly')
-    project_name = st.session_state.get('project_name', 'Your Project')
     curr_sym = st.session_state.get('curr_sym', '$')
 
     # Generate forecast plot
     future_only = fcst.tail(horizon)
-    perf = fcst.set_index('ds')[['yhat_lower', 'yhat_upper']].join(hist.set_index('ds'))
+    perf = fcst.set_index('ds')[['yhat', 'yhat_lower', 'yhat_upper']].join(hist.set_index('ds'))
     anoms = perf[(perf['y'] > perf['yhat_upper']) | (perf['y'] < perf['yhat_lower'])]
 
     view = st.radio("Dashboard Perspective:", ["Forecast", "Anomalies", "Accuracy", "Monthly", "Weekly", "Annual"], horizontal=True)
@@ -528,7 +520,7 @@ if st.session_state.get('analyzed'):
 
     elif view == "Weekly":
         sample_week = pd.DataFrame({'ds': pd.date_range('2024-01-01', periods=7)})
-        weekly_comp = model.predict(sample_week)[['ds', 'weekly']]
+        weekly_comp = st.session_state['model'].predict(sample_week)[['ds', 'weekly']]
         fig.add_trace(go.Bar(x=['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], y=weekly_comp['weekly'], marker_color='#00FFCC'))
 
     elif view == "Annual":
@@ -545,46 +537,59 @@ if st.session_state.get('analyzed'):
     growth_rate = ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0
     total_vol = future_only['yhat'].sum()
 
-    # --- NEW: Download CSV and Report Buttons ---
-    # Prepare CSV data from historical dataframe
-    csv_buffer = None
+    # --- Download Buttons for CSV and Report ---
+    # Prepare CSV data:
+    # Historical data CSV
+    hist_csv = None
     if not hist.empty:
-        csv_buffer = hist.to_csv(index=False).encode('utf-8')
-    
-    # Prepare report text with insights
+        hist_csv = hist.to_csv(index=False).encode('utf-8')
+
+    # Forecast data CSV
+    forecast_csv = None
+    if not forecast.empty:
+        forecast_csv = forecast.to_csv(index=False).encode('utf-8')
+
+    # Prepare report text
     report_text = f"""
     Project: {project_name}
-    Historical Total: {curr_sym}{safe_format_number(insights.get('hist_total',0)):.2f}
-    Forecast Total: {curr_sym}{safe_format_number(insights.get('forecast_total',0)):.2f}
-    Growth Rate: {insights.get('growth_rate',0):+.2f}%
+    Historical Total: {curr_sym}{safe_format_number(insights.get('hist_total', 0)):.2f}
+    Forecast Total: {curr_sym}{safe_format_number(insights.get('forecast_total', 0)):.2f}
+    Growth Rate: {insights.get('growth_rate', 0):+.2f}%
     """
 
     report_bytes = report_text.encode('utf-8')
 
     # Display download buttons
-    st.markdown("---")  # separator
+    st.markdown("---")
     st.subheader("Download Your Data & Report")
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
-        # Download CSV button
-        st.download_button(
-            label="Download CSV",
-            data=csv_buffer,
-            file_name=f"{project_name}_data.csv",
-            mime="text/csv"
-        )
+        if hist_csv:
+            st.download_button(
+                label="Download Historical Data CSV",
+                data=hist_csv,
+                file_name=f"{project_name}_historical_data.csv",
+                mime="text/csv"
+            )
+
     with col2:
-        # Download Report button
+        if forecast_csv:
+            st.download_button(
+                label="Download Forecast Data CSV",
+                data=forecast_csv,
+                file_name=f"{project_name}_forecast_data.csv",
+                mime="text/csv"
+            )
+
+    with col3:
+        # Download report
         st.download_button(
             label="Download Report",
             data=report_bytes,
             file_name=f"{project_name}_report.txt",
             mime="text/plain"
         )
-
-    # --- Continue with other sections if any ---
-    # (Optional: Additional summaries or visualizations)
 
 # =================================================================
 # 7. FOOTER & FEEDBACK SYSTEM
