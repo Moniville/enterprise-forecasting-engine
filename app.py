@@ -11,16 +11,11 @@ import google.generativeai as genai
 from supabase import create_client, Client
 import streamlit.components.v1 as components
 
-# Define safe_format early
-def safe_format(value):
-    if value is None:
-        return 0
-    if isinstance(value, float):
-        if math.isnan(value):
-            return 0
+# Utility function to safely convert values to float
+def safe_format_number(value):
     try:
         return float(value)
-    except:
+    except (TypeError, ValueError):
         return 0
 
 # =================================================================
@@ -320,7 +315,7 @@ with col_right:
                 freq_label = st.session_state.get('freq_label', 'Monthly')
                 insights = st.session_state.get('insights', {})
                 
-                # Build comprehensive context for AI with detailed monthly breakdown
+                # Build detailed context for AI with all insights
                 monthly_details = "\n".join([f"  - {month}: {curr_sym}{value:,.2f}" 
                                             for month, value in insights.get('monthly_breakdown', {}).items()])
                 
@@ -331,10 +326,10 @@ with col_right:
 
 HISTORICAL DATA SUMMARY:
 - Total Sales: {curr_sym}{insights.get('hist_total', 0):,.2f}
-- Average Sales: {curr_sym}{insights.get('hist_avg', 0):,.2f}
+- Average Sales: {curr_sym}{safe_format_number(insights.get('hist_avg', 0)):,.2f}
 - Highest Sales: {curr_sym}{insights.get('hist_max', 0):,.2f}
 - Lowest Sales: {curr_sym}{insights.get('hist_min', 0):,.2f}
-- Daily Average: {curr_sym}{safe_format(insights.get('daily_avg', 0)):,.2f}
+- Daily Average: {curr_sym}{safe_format_number(insights.get('daily_avg', 0)):,.2f}
 
 DETAILED MONTHLY BREAKDOWN:
 {monthly_details}
@@ -344,7 +339,7 @@ DETAILED WEEKLY BREAKDOWN (First 10 weeks):
 
 FORECAST DATA ({horizon} {freq_label.lower()}s ahead):
 - Projected Total: {curr_sym}{insights.get('forecast_total', 0):,.2f}
-- Projected Average: {curr_sym}{insights.get('forecast_avg', 0):,.2f}
+- Projected Average: {curr_sym}{safe_format_number(insights.get('forecast_avg', 0)):,.2f}
 - Projected Highest: {curr_sym}{insights.get('forecast_max', 0):,.2f}
 - Projected Lowest: {curr_sym}{insights.get('forecast_min', 0):,.2f}
 - Growth Rate: {insights.get('growth_rate', 0):+.2f}%
@@ -563,17 +558,3 @@ with f_right:
                 except: st.error("Database submission failed.")
 
 st.markdown(f'<div class="support-bar">💖 <b>Empower Hope Tech:</b> <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
-
-# --- Utility function: Safe formatting ---
-# Place this before your main code execution or at the top.
-def safe_format(value):
-    # Handle None and NaN gracefully
-    if value is None:
-        return 0
-    if isinstance(value, float):
-        if math.isnan(value):
-            return 0
-    # For other types, just return the value
-    return value
-
-# -- End of your full code --
