@@ -85,11 +85,16 @@ def init_connections():
             genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
             ai = genai.GenerativeModel(
                 model_name="gemini-1.5-flash",
-                generation_config={"temperature": 0.7, "top_p": 0.95, "max_output_tokens": 1024}
+                generation_config={
+                    "temperature": 0.7,
+                    "top_p": 0.95,
+                    "top_k": 40,
+                    "max_output_tokens": 1024,
+                }
             )
-            st.sidebar.success("✅ AI Engine Active")
+            st.sidebar.success("✅ AI Engine Active: Gemini 1.5 Flash")
         else:
-            st.sidebar.error("❌ GOOGLE_API_KEY not found")
+            st.sidebar.error("❌ GOOGLE_API_KEY not found in secrets")
     except Exception as e:
         st.sidebar.error(f"❌ AI Setup Failed: {str(e)[:50]}")
     
@@ -97,10 +102,8 @@ def init_connections():
 
 supabase, ai_model = init_connections()
 
-# Initialize session state
 if "last_ai_call" not in st.session_state: st.session_state.last_ai_call = 0
 if "messages" not in st.session_state: st.session_state.messages = []
-if "analyzed" not in st.session_state: st.session_state.analyzed = False
 
 # =================================================================
 # 2. ANALYTICS & HEALTH TOOLS
@@ -131,44 +134,58 @@ def calculate_insights(hist_data, forecast_data, horizon, curr_sym):
         'forecast_max': forecast_data['yhat'].tail(horizon).max(),
         'forecast_min': forecast_data['yhat'].tail(horizon).min(),
     }
-    insights['growth_rate'] = ((insights['forecast_total'] - insights['hist_total']) / insights['hist_total']) * 100 if insights['hist_total'] > 0 else 0
+    
+    if insights['hist_total'] > 0:
+        insights['growth_rate'] = ((insights['forecast_total'] - insights['hist_total']) / insights['hist_total']) * 100
+    else:
+        insights['growth_rate'] = 0
     
     hist_with_date = hist_data.set_index('ds')
     insights['daily_avg'] = hist_with_date['y'].resample('D').sum().mean()
     insights['weekly_total'] = hist_with_date['y'].resample('W').sum()
     insights['monthly_total'] = hist_with_date['y'].resample('MS').sum()
+    insights['yearly_total'] = hist_with_date['y'].resample('YS').sum()
+    
     return insights
 
 # =================================================================
 # 3. UI LAYOUT & SIDEBAR CONTROL
 # =================================================================
 if os.path.exists("assets/Hope tech 2.png"):
-    st.sidebar.image("assets/Hope tech 2.png", width=120)
+    st.image("assets/Hope tech 2.png", width=120)
 
-st.markdown(f'<div class="support-bar">🚀 <b>Support Zenith Innovation:</b> <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
+st.markdown(f'<div class="support-bar">🚀 <b>Support Zenith Innovation:</b> Help us scale {PRODUCT_NAME}. <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline; margin-left: 10px;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
 
 with st.sidebar:
     st.divider()
-    project_name = st.text_input("Project Namespace:", value="Pulse Project")
-    currency_lookup = {"USD ($)": "$", "NGN (₦)": "₦", "EUR (€)": "€", "GBP (£)": "£", "GHS (GH₵)": "GH₵"}
-    selected_curr_name = st.selectbox("Currency:", options=list(currency_lookup.keys()))
-    curr_sym = currency_lookup[selected_curr_name]
-    input_method = st.radio("Data Source:", ["CSV Upload (Recommended)", "Manual Entry"])
-    ma_window = st.slider("Smoothing Window:", 2, 90, 7)
+    st.header("Project Configuration")
+    project_name = st.text_input("Project Namespace:", value="Your Project Name")
     
-    if st.button("🗑️ Reset All Cache"):
+    currency_lookup = {"USD ($)": "$", "NGN (₦)": "₦", "EUR (€)": "€", "GBP (£)": "£", "GHS (GH₵)": "GH₵"}
+    selected_curr_name = st.selectbox("Operational Currency:", options=list(currency_lookup.keys()))
+    curr_sym = currency_lookup[selected_curr_name]
+    
+    input_method = st.radio("Inbound Data Source:", ["CSV Upload (Recommended)", "Manual Entry"])
+    st.divider()
+    ma_window = st.slider("Smoothing Window (Days):", 2, 90, 7)
+    
+    if st.button("🗑️ Reset All Cache & Chat"):
         for key in list(st.session_state.keys()): del st.session_state[key]
         st.rerun()
 
     with st.expander("🔒 Developer Access"):
         admin_key = st.text_input("Security Key", type="password")
-        if admin_key == "Ibiene2003#":
-            if supabase:
-                try:
-                    fb = supabase.table("feedback").select("*").execute()
-                    st.write("### Internal Feedback Log")
-                    st.dataframe(pd.DataFrame(fb.data))
-                except: st.error("Log fetch failed.")
+        is_admin = (admin_key == "Ibiene2003#")
+
+if is_admin:
+    if supabase:
+        try:
+            fb = supabase.table("feedback").select("*").execute()
+            st.write("### Internal Feedback Log")
+            st.dataframe(pd.DataFrame(fb.data))
+        except: st.error("Could not fetch logs.")
+    if st.button("End Session"): st.rerun()
+    st.stop()
 
 # =================================================================
 # 4. DATA PROCESSING
@@ -178,25 +195,31 @@ col_left, col_right = st.columns([2.2, 1.3])
 
 with col_left:
     df_input = None
+    u_date, u_val = None, None
     if "CSV Upload" in input_method:
         file = st.file_uploader("Drop dataset here", type="csv")
         if file:
             df_input = pd.read_csv(file)
-            st.dataframe(df_input.head(3), use_container_width=True)
+            st.write("### 📊 Inbound Data Preview")
+            st.dataframe(df_input.head(5), use_container_width=True)
             u_date = st.selectbox("Map Date Column:", df_input.columns)
             u_val = st.selectbox("Map Target Value:", df_input.columns)
+            health_issues = perform_health_check(df_input, u_date, u_val)
+            if health_issues:
+                for issue in health_issues: st.warning(f"⚠️ {issue}")
+            else: st.success("✅ Data Integrity Verified.")
     else:
-        manual = st.text_area("Paste comma-separated values:")
-        if manual:
+        manual = st.text_area("Paste comma-separated values (e.g., 100, 200, 150):")
+        if manual: 
             try:
                 vals = [float(x.strip()) for x in manual.split(",") if x.strip()]
                 df_input = pd.DataFrame({"y": vals})
-            except: st.error("Numerical values only please.")
+            except: st.error("Validation Error: Please provide numerical values only.")
 
     if df_input is not None:
         c1, c2 = st.columns(2)
-        freq_label = c1.selectbox("Frequency:", ["Yearly", "Monthly", "Weekly", "Daily"], index=1)
-        horizon = c2.number_input(f"Horizon ({freq_label}s):", min_value=1, value=12)
+        freq_label = c1.selectbox("Interval Frequency:", ["Yearly", "Monthly", "Weekly", "Daily"], index=1)
+        horizon = c2.number_input(f"Forecasting Horizon ({freq_label}s):", min_value=1, value=12)
         
         if st.button("🚀 Process Intelligence", type="primary"):
             try:
@@ -209,7 +232,7 @@ with col_left:
                     working_df['ds'] = pd.date_range(end=datetime.now(), periods=len(working_df), freq=freq_code)
                 
                 working_df = working_df.dropna().sort_values('ds').groupby('ds')['y'].sum().reset_index()
-                with st.spinner("AI Processing..."):
+                with st.spinner("AI Engine executing..."):
                     freq_map = {"Yearly": "YS", "Monthly": "MS", "Weekly": "W", "Daily": "D"}
                     f_data, f_model = run_forecast_model(working_df, horizon, freq_map[freq_label])
                     insights = calculate_insights(working_df, f_data, horizon, curr_sym)
@@ -219,10 +242,10 @@ with col_left:
                         'analyzed': True, 'horizon': horizon, 'freq_label': freq_label, 'insights': insights
                     })
                     st.rerun()
-            except Exception as e: st.error(f"Error: {e}")
+            except Exception as e: st.error(f"Computation Error: {e}")
 
 # =================================================================
-# 5. CHAT-STYLE AI ASSISTANT
+# 5. CHAT-STYLE AI ASSISTANT (RESTORED WITH FULL RETRY LOGIC)
 # =================================================================
 with col_right:
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
@@ -230,70 +253,130 @@ with col_right:
     chat_container = st.container(height=400)
     
     with chat_container:
-        for m in st.session_state.messages:
-            with st.chat_message(m["role"]): st.markdown(m["content"])
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]): st.markdown(message["content"])
 
-    if st.session_state.get('analyzed'):
+    if st.session_state.get('analyzed') and ai_model:
         if query := st.chat_input("Ask about your projections..."):
-            if time.time() - st.session_state.last_ai_call < 2:
-                st.warning("Wait a moment...")
+            current_time = time.time()
+            if current_time - st.session_state.last_ai_call < 2:
+                st.warning("⏳ Please wait a moment.")
             else:
                 st.session_state.messages.append({"role": "user", "content": query})
-                # AI Logic starts here
-                ins = st.session_state['insights']
-                context = f"Analyst for {project_name}. Total Hist: {curr_sym}{ins['hist_total']:,.2f}. Projected Total: {curr_sym}{ins['forecast_total']:,.2f}. Growth: {ins['growth_rate']:.2f}%. Query: {query}"
+                with chat_container:
+                    with st.chat_message("user"): st.markdown(query)
+
+                insights = st.session_state.get('insights', {})
+                context = f"""You are an expert analyst for {BRAND_NAME} on project: {project_name}.
+                HISTORICAL: Total: {curr_sym}{insights.get('hist_total', 0):,.2f}, Max: {curr_sym}{insights.get('hist_max', 0):,.2f}.
+                FORECAST: Projected Total: {curr_sym}{insights.get('forecast_total', 0):,.2f}, Growth: {insights.get('growth_rate', 0):+.2f}%.
+                Question: {query}"""
+
+                max_retries = 3
+                retry_count = 0
+                success = False
                 
-                try:
-                    response = ai_model.generate_content(context)
-                    ans = response.text
-                except:
-                    ans = f"Connection busy. Summary: Projected growth of {ins['growth_rate']:.2f}% expected."
-                
-                st.session_state.messages.append({"role": "assistant", "content": ans})
-                st.session_state.last_ai_call = time.time()
-                st.rerun()
-    else:
-        st.info("Upload data to start AI chat.")
+                while retry_count < max_retries and not success:
+                    try:
+                        if retry_count > 0: time.sleep(2 ** retry_count)
+                        response = ai_model.generate_content(context)
+                        ai_text = response.text if hasattr(response, 'text') else str(response)
+                        
+                        st.session_state.messages.append({"role": "assistant", "content": ai_text})
+                        st.session_state.last_ai_call = time.time()
+                        success = True
+                        st.rerun()
+                    except Exception as e:
+                        retry_count += 1
+                        if retry_count >= max_retries:
+                            # Restore user's specific fallback logic
+                            query_lower = query.lower()
+                            if any(word in query_lower for word in ['sum', 'total', 'revenue']):
+                                fallback = f"Projected total for {project_name} is {curr_sym}{insights.get('forecast_total', 0):,.2f}."
+                            elif 'growth' in query_lower:
+                                fallback = f"Projected growth is {insights.get('growth_rate', 0):+.2f}%."
+                            else:
+                                fallback = f"I'm having connection issues. Here's your summary: {insights.get('growth_rate', 0):+.2f}% growth expected."
+                            
+                            st.session_state.messages.append({"role": "assistant", "content": fallback})
+                            st.session_state.last_ai_call = time.time()
+                            st.rerun()
+
+    elif st.session_state.get('analyzed') and not ai_model:
+        st.error("❌ AI Engine unavailable. Check GOOGLE_API_KEY.")
+    else: 
+        st.info("📊 Upload data to unlock AI chat.")
     st.markdown('</div>', unsafe_allow_html=True)
 
 # =================================================================
-# 6. DASHBOARD
+# 6. VISUALIZATION DASHBOARD (RESTORED ALL 6 VIEWS)
 # =================================================================
 if st.session_state.get('analyzed'):
     hist, fcst = st.session_state['history'], st.session_state['forecast']
-    horizon, ins = st.session_state['horizon'], st.session_state['insights']
-    future_only = fcst.tail(horizon)
+    model, horizon = st.session_state['model'], st.session_state['horizon']
+    freq_label, ins = st.session_state['freq_label'], st.session_state['insights']
     
-    view = st.radio("View:", ["Forecast", "Anomalies", "Accuracy", "Monthly", "Annual"], horizontal=True)
+    future_only = fcst.tail(horizon)
+    perf = fcst.set_index('ds')[['yhat_lower', 'yhat_upper']].join(hist.set_index('ds'))
+    anoms = perf[(perf['y'] > perf['yhat_upper']) | (perf['y'] < perf['yhat_lower'])]
+    
+    view = st.radio("Dashboard Perspective:", ["Forecast", "Anomalies", "Accuracy", "Monthly", "Weekly", "Annual"], horizontal=True)
     fig = go.Figure()
 
     if view == "Forecast":
-        fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat'], mode='lines+markers', name="Prediction", line=dict(color='#00B0F6', width=4)))
-        fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat_lower'], fill='tonexty', line=dict(width=0), name="Confidence"))
+        fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat'], mode='lines+markers+text', text=[f"{curr_sym}{v:,.0f}" for v in future_only['yhat']], textposition="top center", line=dict(color='#00B0F6', width=5), name="Prediction"))
+        fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat_lower'], fill='tonexty', fillcolor='rgba(0,176,246,0.1)', line=dict(width=0), name="Confidence Interval"))
+    
     elif view == "Anomalies":
-        fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Historical Data'))
+        a1, a2, a3 = st.columns(3)
+        a1.metric("Irregularities", len(anoms))
+        a2.metric("Highest Spike", f"{curr_sym}{hist['y'].max():,.2f}")
+        a3.metric("Lowest Dip", f"{curr_sym}{hist['y'].min():,.2f}")
+        fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Historical Data', line=dict(width=4)))
+        fig.add_trace(go.Scatter(x=anoms.index, y=anoms['y'], mode='markers', marker=dict(color='red', size=15, symbol='x'), name='Anomalous Point'))
+    
+    elif view == "Accuracy":
+        hist_preds = fcst[fcst['ds'].isin(hist['ds'])]
+        hist['ma'] = hist['y'].rolling(window=ma_window).mean()
+        fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Actual', opacity=0.4))
+        fig.add_trace(go.Scatter(x=hist['ds'], y=hist['ma'], name='Trend', line=dict(color='#00FFCC', width=5)))
+        fig.add_trace(go.Scatter(x=hist_preds['ds'], y=hist_preds['yhat'], name='AI Backtest', line=dict(dash='dot', color='#00B0F6', width=4)))
+    
     elif view == "Monthly":
         monthly = hist.set_index('ds').resample('MS')['y'].sum().reset_index()
-        fig.add_trace(go.Bar(x=monthly['ds'], y=monthly['y'], marker_color="#00B0F6"))
-
-    fig.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='#0e1117', height=400)
-    st.plotly_chart(fig, use_container_width=True)
+        fig.add_trace(go.Bar(x=monthly['ds'], y=monthly['y'], marker_color="#636EFA"))
     
-    st.markdown(f'<div class="interpretation-box"><b>🔍 Executive Summary:</b> Expected volume of <b>{curr_sym}{future_only["yhat"].sum():,.2f}</b> with <b>{ins["growth_rate"]:.1f}%</b> momentum.</div>', unsafe_allow_html=True)
+    elif view == "Weekly":
+        sample_week = pd.DataFrame({'ds': pd.date_range('2024-01-01', periods=7)})
+        weekly_comp = model.predict(sample_week)[['ds', 'weekly']]
+        fig.add_trace(go.Bar(x=['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], y=weekly_comp['weekly'], marker_color='#00FFCC'))
+    
+    elif view == "Annual":
+        yearly = hist.set_index('ds').resample('YS')['y'].sum().reset_index()
+        fig.add_trace(go.Scatter(x=yearly['ds'], y=yearly['y'], mode='lines+markers', line=dict(color="#EF553B", width=6)))
+
+    fig.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='#0e1117', height=450)
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown(f'<div class="interpretation-box"><b>🔍 Executive Summary for {project_name}:</b> Projected total of <b>{curr_sym}{future_only["yhat"].sum():,.2f}</b>. We see <b>{"upward momentum" if ins["growth_rate"] > 0 else "cooling period"}</b>.</div>', unsafe_allow_html=True)
 
 # =================================================================
-# 7. FOOTER
+# 7. FOOTER & FEEDBACK
 # =================================================================
 st.divider()
-f1, f2 = st.columns(2)
-with f1:
+f_left, f_right = st.columns(2)
+with f_left:
     st.write(f"**Monivi Hope** | Lead at **{BRAND_NAME}**")
     st.markdown("[🔗 Digital Portfolio](https://linktr.ee/MoniviHope)")
-with f2:
-    with st.form("feedback"):
-        email = st.text_input("Email")
-        msg = st.text_area("Message")
-        if st.form_submit_button("Submit"):
-            if supabase and email and msg:
-                supabase.table("feedback").insert({"email": email, "message": msg}).execute()
-                st.success("Sent.")
+with f_right:
+    with st.form("feedback_system", clear_on_submit=True):
+        email_in = st.text_input("Contact Email")
+        msg_in = st.text_area("Observations / Request")
+        if st.form_submit_button("Submit Ticket"):
+            if supabase and email_in and msg_in:
+                try:
+                    supabase.table("feedback").insert({"email": email_in, "message": msg_in}).execute()
+                    st.success("Ticket submitted.")
+                except: st.error("Database submission failed.")
+
+st.markdown(f'<div class="support-bar">💖 <b>Empower Hope Tech:</b> <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
