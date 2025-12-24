@@ -6,7 +6,7 @@ from datetime import datetime
 import io
 import time
 import os
-import math  # For safe_format
+import math  # For safe_format_number
 import google.generativeai as genai
 from supabase import create_client, Client
 import streamlit.components.v1 as components
@@ -260,12 +260,16 @@ with col_left:
                 working_df = working_df.dropna().sort_values('ds').groupby('ds')['y'].sum().reset_index()
                 with st.spinner("AI Engine executing..."):
                     freq_map = {"Yearly": "YS", "Monthly": "MS", "Weekly": "W", "Daily": "D"}
+                    forecast = pd.DataFrame()  # Initialize forecast
                     f_data, f_model = run_forecast_model(working_df, horizon, freq_map[freq_label])
+                    
+                    # Assign forecast variable
+                    forecast = f_data
                     
                     # Calculate insights
                     insights = calculate_insights(working_df, f_data, horizon, curr_sym)
                     
-                    # Save to session state for use in AI chat
+                    # Save to session state
                     st.session_state.update({
                         'forecast': f_data, 
                         'model': f_model, 
@@ -277,7 +281,7 @@ with col_left:
                         'project_name': project_name,
                         'curr_sym': curr_sym
                     })
-            except Exception as e: st.error(f"Computation Error: {e}")
+            except Exception as e: st.error(f"Forecast error: {e}")
 
 # =================================================================
 # 5. CHAT-STYLE AI ASSISTANT (FULLY FUNCTIONAL WITH DATA INSIGHTS)
