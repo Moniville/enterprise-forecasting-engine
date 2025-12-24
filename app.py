@@ -11,7 +11,7 @@ from supabase import create_client, Client
 import streamlit.components.v1 as components
 
 # =================================================================
-# 0. BRANDING & UI CONFIGURATION (Recruiter-Facing Design)
+# 0. BRANDING & UI CONFIGURATION
 # =================================================================
 PRODUCT_NAME = "Pulse AI"
 BRAND_NAME = "Hope Tech"
@@ -38,7 +38,7 @@ ga_injection = f"""
 """
 components.html(ga_injection, height=0, width=0)
 
-# --- CUSTOM CSS: UNIFIED DARK THEME ---
+# --- CUSTOM CSS ---
 st.markdown("""
     <style>
         header[data-testid="stHeader"] { background-color: #0e1117 !important; }
@@ -69,58 +69,58 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 1. SYSTEM INITIALIZATION (IMPROVED AI CONNECTION)
+# 1. SYSTEM INITIALIZATION
 # =================================================================
 def init_connections():
-    """Initialize Supabase and Google AI connections with proper error handling"""
+    """Initialize Supabase and Google AI"""
     sb, ai = None, None
     
-    # Initialize Supabase
+    # Supabase
     try:
         if "SUPABASE_URL" in st.secrets and "SUPABASE_KEY" in st.secrets:
             sb = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-            st.sidebar.success("✅ Database Connected")
     except Exception as e:
-        st.sidebar.warning(f"⚠️ Database: {str(e)[:50]}")
+        pass
     
-    # Initialize Google AI with proper configuration
+    # Google AI
     try:
         if "GOOGLE_API_KEY" in st.secrets:
-            # Configure the API
             genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-            
-            # Create model instance with safety settings
             ai = genai.GenerativeModel(
                 model_name="gemini-1.5-flash",
                 generation_config={
-                    "temperature": 0.7,
+                    "temperature": 0.9,
                     "top_p": 0.95,
                     "top_k": 40,
-                    "max_output_tokens": 1024,
-                }
+                    "max_output_tokens": 2048,
+                },
+                safety_settings=[
+                    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+                ]
             )
-            
-            st.sidebar.success("✅ AI Engine Active: Gemini 1.5 Flash")
+            st.sidebar.success("✅ AI Engine: Gemini 1.5 Flash Active")
         else:
-            st.sidebar.error("❌ GOOGLE_API_KEY not found in secrets")
-            st.sidebar.info("👉 Add your API key in Streamlit Cloud Secrets")
+            st.sidebar.error("❌ Missing GOOGLE_API_KEY")
+            ai = None
     except Exception as e:
-        st.sidebar.error(f"❌ AI Setup Failed: {str(e)[:50]}")
-        st.sidebar.info("Check your Google API Key and quota")
+        st.sidebar.error(f"❌ AI Error: {str(e)[:100]}")
         ai = None
     
     return sb, ai
 
 supabase, ai_model = init_connections()
 
-# Initialize session state
-if "last_ai_call" not in st.session_state:
-    st.session_state.last_ai_call = 0
+# Session state initialization
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "last_call" not in st.session_state:
+    st.session_state.last_call = 0
 
 # =================================================================
-# 2. ANALYTICS & HEALTH TOOLS
+# 2. ANALYTICS TOOLS
 # =================================================================
 @st.cache_resource
 def run_forecast_model(df, periods, freq):
@@ -137,44 +137,8 @@ def perform_health_check(df, date_col, val_col):
     if len(df) < 2: issues.append("Insufficient data for forecasting.")
     return issues
 
-def calculate_insights(hist_data, forecast_data, horizon, curr_sym):
-    """Calculate comprehensive insights from the data"""
-    insights = {
-        'hist_total': hist_data['y'].sum(),
-        'hist_avg': hist_data['y'].mean(),
-        'hist_max': hist_data['y'].max(),
-        'hist_min': hist_data['y'].min(),
-        'forecast_total': forecast_data['yhat'].tail(horizon).sum(),
-        'forecast_avg': forecast_data['yhat'].tail(horizon).mean(),
-        'forecast_max': forecast_data['yhat'].tail(horizon).max(),
-        'forecast_min': forecast_data['yhat'].tail(horizon).min(),
-    }
-    
-    # Calculate growth rate
-    if insights['hist_total'] > 0:
-        insights['growth_rate'] = ((insights['forecast_total'] - insights['hist_total']) / insights['hist_total']) * 100
-    else:
-        insights['growth_rate'] = 0
-    
-    # Calculate daily, weekly, monthly, yearly aggregates from historical data
-    hist_with_date = hist_data.set_index('ds')
-    insights['daily_avg'] = hist_with_date['y'].resample('D').sum().mean()
-    insights['weekly_totals'] = hist_with_date['y'].resample('W').sum().to_dict()
-    insights['monthly_totals'] = hist_with_date['y'].resample('MS').sum().to_dict()
-    insights['yearly_totals'] = hist_with_date['y'].resample('YS').sum().to_dict()
-    
-    # Calculate individual month names and values for clarity
-    monthly_data = hist_with_date['y'].resample('MS').sum()
-    insights['monthly_breakdown'] = {date.strftime('%B %Y'): value for date, value in monthly_data.items()}
-    
-    # Weekly breakdown
-    weekly_data = hist_with_date['y'].resample('W').sum()
-    insights['weekly_breakdown'] = {f"Week of {date.strftime('%Y-%m-%d')}": value for date, value in weekly_data.items()}
-    
-    return insights
-
 # =================================================================
-# 3. UI LAYOUT & SIDEBAR CONTROL
+# 3. UI LAYOUT & SIDEBAR
 # =================================================================
 if os.path.exists("assets/Hope tech 2.png"):
     st.image("assets/Hope tech 2.png", width=120)
@@ -196,7 +160,8 @@ with st.sidebar:
     ma_window = st.slider("Smoothing Window (Days):", 2, 90, 7)
     
     if st.button("🗑️ Reset All Cache & Chat"):
-        for key in list(st.session_state.keys()): del st.session_state[key]
+        for key in list(st.session_state.keys()): 
+            del st.session_state[key]
         st.rerun()
 
     with st.expander("🔒 Developer Access"):
@@ -209,12 +174,14 @@ if is_admin:
             fb = supabase.table("feedback").select("*").execute()
             st.write("### Internal Feedback Log")
             st.dataframe(pd.DataFrame(fb.data))
-        except: st.error("Could not fetch logs.")
-    if st.button("End Session"): st.rerun()
+        except: 
+            st.error("Could not fetch logs.")
+    if st.button("End Session"): 
+        st.rerun()
     st.stop()
 
 # =================================================================
-# 4. DATA PROCESSING & INGESTION
+# 4. DATA PROCESSING
 # =================================================================
 st.markdown(f'<p class="main-title">{PRODUCT_NAME} Analytics Engine</p>', unsafe_allow_html=True)
 col_left, col_right = st.columns([2.2, 1.3])
@@ -232,15 +199,18 @@ with col_left:
             u_val = st.selectbox("Map Target Value:", df_input.columns)
             health_issues = perform_health_check(df_input, u_date, u_val)
             if health_issues:
-                for issue in health_issues: st.warning(f"⚠️ {issue}")
-            else: st.success("✅ Data Integrity Verified.")
+                for issue in health_issues: 
+                    st.warning(f"⚠️ {issue}")
+            else: 
+                st.success("✅ Data Integrity Verified.")
     else:
         manual = st.text_area("Paste comma-separated values (e.g., 100, 200, 150):")
         if manual: 
             try:
                 vals = [float(x.strip()) for x in manual.split(",") if x.strip()]
                 df_input = pd.DataFrame({"y": vals})
-            except: st.error("Validation Error: Please provide numerical values only.")
+            except: 
+                st.error("Validation Error: Please provide numerical values only.")
 
     if df_input is not None:
         c1, c2 = st.columns(2)
@@ -258,26 +228,27 @@ with col_left:
                     working_df['ds'] = pd.date_range(end=datetime.now(), periods=len(working_df), freq=freq_code)
                 
                 working_df = working_df.dropna().sort_values('ds').groupby('ds')['y'].sum().reset_index()
+                
                 with st.spinner("AI Engine executing..."):
                     freq_map = {"Yearly": "YS", "Monthly": "MS", "Weekly": "W", "Daily": "D"}
                     f_data, f_model = run_forecast_model(working_df, horizon, freq_map[freq_label])
                     
-                    # Calculate insights
-                    insights = calculate_insights(working_df, f_data, horizon, curr_sym)
-                    
                     st.session_state.update({
-                        'forecast': f_data, 
-                        'model': f_model, 
-                        'history': working_df, 
-                        'analyzed': True, 
-                        'horizon': horizon, 
+                        'forecast': f_data,
+                        'model': f_model,
+                        'history': working_df,
+                        'analyzed': True,
+                        'horizon': horizon,
                         'freq_label': freq_label,
-                        'insights': insights
+                        'project_name': project_name,
+                        'curr_sym': curr_sym
                     })
-            except Exception as e: st.error(f"Computation Error: {e}")
+                    st.success("✅ Data processed successfully!")
+            except Exception as e: 
+                st.error(f"Computation Error: {e}")
 
 # =================================================================
-# 5. CHAT-STYLE AI ASSISTANT (FULLY FUNCTIONAL WITH DATA INSIGHTS)
+# 5. INTELLIGENT AI CHAT (OPTIMIZED FOR SPEED & ACCURACY)
 # =================================================================
 with col_right:
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
@@ -290,176 +261,107 @@ with col_right:
                 st.markdown(message["content"])
 
     if st.session_state.get('analyzed') and ai_model:
-        if query := st.chat_input("Ask about your projections..."):
-            # Check cooldown (prevent spam - 2 seconds between requests)
-            current_time = time.time()
-            if current_time - st.session_state.last_ai_call < 2:
-                st.warning("⏳ Please wait a moment before sending another message.")
+        if query := st.chat_input("Ask anything about your data..."):
+            # Cooldown check
+            if time.time() - st.session_state.last_call < 1:
+                st.warning("⏳ Please wait a moment...")
             else:
+                # Add user message
                 st.session_state.messages.append({"role": "user", "content": query})
                 with chat_container:
                     with st.chat_message("user"): 
                         st.markdown(query)
 
-                # Get data from session state
-                hist_data = st.session_state['history']
-                forecast_data = st.session_state['forecast']
-                horizon = st.session_state.get('horizon', 12)
-                freq_label = st.session_state.get('freq_label', 'Monthly')
-                insights = st.session_state.get('insights', {})
+                # Get data
+                hist = st.session_state['history']
+                fcst = st.session_state['forecast']
+                horizon = st.session_state['horizon']
+                freq = st.session_state['freq_label']
+                proj_name = st.session_state.get('project_name', 'Your Project')
+                curr = st.session_state.get('curr_sym', '$')
                 
-                # Build comprehensive context for AI with detailed monthly breakdown
-                monthly_details = "\n".join([f"  - {month}: {curr_sym}{value:,.2f}" 
-                                            for month, value in insights.get('monthly_breakdown', {}).items()])
+                # Prepare detailed data for AI
+                hist_monthly = hist.set_index('ds').resample('MS')['y'].sum()
+                hist_weekly = hist.set_index('ds').resample('W')['y'].sum()
+                hist_daily = hist.set_index('ds').resample('D')['y'].sum()
                 
-                weekly_details = "\n".join([f"  - {week}: {curr_sym}{value:,.2f}" 
-                                           for week, value in list(insights.get('weekly_breakdown', {}).items())[:10]])
+                # Create comprehensive data string
+                monthly_str = "\n".join([f"{date.strftime('%B %Y')}: {curr}{val:,.2f}" 
+                                        for date, val in hist_monthly.items()])
                 
-                context = f"""You are an expert data analyst for {BRAND_NAME}, analyzing project: {project_name}.
-
-HISTORICAL DATA SUMMARY:
-- Total Sales: {curr_sym}{insights.get('hist_total', 0):,.2f}
-- Average Sales: {curr_sym}{insights.get('hist_avg', 0):,.2f}
-- Highest Sales: {curr_sym}{insights.get('hist_max', 0):,.2f}
-- Lowest Sales: {curr_sym}{insights.get('hist_min', 0):,.2f}
-- Daily Average: {curr_sym}{insights.get('daily_avg', 0):,.2f}
-
-DETAILED MONTHLY BREAKDOWN:
-{monthly_details}
-
-DETAILED WEEKLY BREAKDOWN (First 10 weeks):
-{weekly_details}
-
-FORECAST DATA ({horizon} {freq_label.lower()}s ahead):
-- Projected Total: {curr_sym}{insights.get('forecast_total', 0):,.2f}
-- Projected Average: {curr_sym}{insights.get('forecast_avg', 0):,.2f}
-- Projected Highest: {curr_sym}{insights.get('forecast_max', 0):,.2f}
-- Projected Lowest: {curr_sym}{insights.get('forecast_min', 0):,.2f}
-- Growth Rate: {insights.get('growth_rate', 0):+.2f}%
-
-User Question: {query}
-
-INSTRUCTIONS:
-- Answer the user's question using the EXACT data provided above
-- If they ask for monthly sales, list out the specific months with their values
-- If they ask for sums or totals, calculate from the breakdown provided
-- Be specific with month names and values
-- Format currency as {curr_sym}X,XXX.XX
-- If the user asks about historical data, use the HISTORICAL section
-- If they ask about projections/forecasts, use the FORECAST section
-- Always be precise and cite specific numbers"""
-
-                # Retry logic with exponential backoff
-                max_retries = 3
-                retry_count = 0
-                success = False
+                weekly_str = "\n".join([f"Week {date.strftime('%Y-%m-%d')}: {curr}{val:,.2f}" 
+                                       for date, val in list(hist_weekly.items())[:20]])
                 
-                while retry_count < max_retries and not success:
+                # Build intelligent prompt
+                prompt = f"""You are a professional business intelligence analyst working with {BRAND_NAME}'s {PRODUCT_NAME} platform.
+
+PROJECT: {proj_name}
+CURRENCY: {curr}
+
+=== COMPLETE HISTORICAL DATA ===
+
+MONTHLY BREAKDOWN:
+{monthly_str}
+
+WEEKLY BREAKDOWN (First 20 weeks):
+{weekly_str}
+
+KEY METRICS:
+- Total Historical Sales: {curr}{hist['y'].sum():,.2f}
+- Average per Period: {curr}{hist['y'].mean():,.2f}
+- Highest Sale: {curr}{hist['y'].max():,.2f}
+- Lowest Sale: {curr}{hist['y'].min():,.2f}
+- Number of Data Points: {len(hist)}
+
+FORECAST METRICS ({horizon} {freq.lower()}s ahead):
+- Projected Total: {curr}{fcst['yhat'].tail(horizon).sum():,.2f}
+- Projected Average: {curr}{fcst['yhat'].tail(horizon).mean():,.2f}
+- Growth Rate: {((fcst['yhat'].tail(horizon).sum() - hist['y'].sum()) / hist['y'].sum() * 100):+.2f}%
+
+=== USER QUESTION ===
+{query}
+
+=== INSTRUCTIONS ===
+1. Answer the question using the EXACT data provided above
+2. If asked for sums, add up the specific values from the breakdown
+3. If asked for monthly data, reference the monthly breakdown by name
+4. Be conversational but precise - like a professional analyst
+5. Use specific numbers and dates
+6. Format all currency values as {curr}X,XXX.XX
+7. If the question asks about historical data, use the historical section
+8. If it asks about projections/forecasts, use the forecast section
+9. Be helpful and insightful - add context when relevant
+
+Provide a clear, professional answer now:"""
+
+                # Make AI call with progress indicator
+                with st.spinner("🤖 Analyzing data..."):
                     try:
-                        if retry_count > 0:
-                            wait_time = 2 ** retry_count
-                            with st.spinner(f"Retrying AI connection... (Attempt {retry_count + 1}/{max_retries})"):
-                                time.sleep(wait_time)
+                        response = ai_model.generate_content(prompt)
+                        ai_reply = response.text
                         
-                        # Make API call
-                        response = ai_model.generate_content(context)
-                        
-                        # Extract response text
-                        if hasattr(response, 'text'):
-                            ai_text = response.text
-                        elif hasattr(response, 'parts'):
-                            ai_text = response.parts[0].text
-                        else:
-                            ai_text = str(response)
-                        
-                        st.session_state.messages.append({"role": "assistant", "content": ai_text})
-                        st.session_state.last_ai_call = time.time()
-                        success = True
+                        st.session_state.messages.append({"role": "assistant", "content": ai_reply})
+                        st.session_state.last_call = time.time()
                         st.rerun()
                         
                     except Exception as e:
-                        retry_count += 1
-                        error_msg = str(e).lower()
+                        error_msg = str(e)
                         
-                        if retry_count >= max_retries:
-                            # Provide intelligent fallback based on query
-                            query_lower = query.lower()
-                            
-                            # Check if asking about monthly data
-                            if 'monthly' in query_lower or 'month' in query_lower:
-                                if 'sum' in query_lower or 'total' in query_lower:
-                                    monthly_list = "\n".join([f"- **{month}**: {curr_sym}{value:,.2f}" 
-                                                             for month, value in insights.get('monthly_breakdown', {}).items()])
-                                    monthly_sum = sum(insights.get('monthly_breakdown', {}).values())
-                                    fallback_msg = f"""Based on your data for **{project_name}**, here are the monthly sales:
-
-{monthly_list}
-
-**Total Sum**: {curr_sym}{monthly_sum:,.2f}"""
-                                
-                                elif 'average' in query_lower or 'avg' in query_lower:
-                                    monthly_values = list(insights.get('monthly_breakdown', {}).values())
-                                    if monthly_values:
-                                        monthly_avg = sum(monthly_values) / len(monthly_values)
-                                        fallback_msg = f"The average monthly sales for **{project_name}** is **{curr_sym}{monthly_avg:,.2f}** across {len(monthly_values)} months."
-                                    else:
-                                        fallback_msg = "No monthly data available."
-                                else:
-                                    monthly_list = "\n".join([f"- **{month}**: {curr_sym}{value:,.2f}" 
-                                                             for month, value in insights.get('monthly_breakdown', {}).items()])
-                                    fallback_msg = f"Monthly sales for **{project_name}**:\n\n{monthly_list}"
-                            
-                            elif 'weekly' in query_lower or 'week' in query_lower:
-                                weekly_list = "\n".join([f"- **{week}**: {curr_sym}{value:,.2f}" 
-                                                        for week, value in list(insights.get('weekly_breakdown', {}).items())[:10]])
-                                fallback_msg = f"Weekly sales for **{project_name}** (first 10 weeks):\n\n{weekly_list}"
-                            
-                            elif any(word in query_lower for word in ['sum', 'total']) and 'historical' in query_lower:
-                                fallback_msg = f"The total historical sales for **{project_name}** is **{curr_sym}{insights.get('hist_total', 0):,.2f}**."
-                            
-                            elif any(word in query_lower for word in ['average', 'mean', 'avg']):
-                                if 'daily' in query_lower:
-                                    fallback_msg = f"The daily average for **{project_name}** is **{curr_sym}{insights.get('daily_avg', 0):,.2f}**."
-                                else:
-                                    fallback_msg = f"Historical average: **{curr_sym}{insights.get('hist_avg', 0):,.2f}** | Projected average: **{curr_sym}{insights.get('forecast_avg', 0):,.2f}**"
-                            
-                            elif any(word in query_lower for word in ['growth', 'trend', 'change']):
-                                growth = insights.get('growth_rate', 0)
-                                fallback_msg = f"**{project_name}** shows a **{growth:+.2f}%** {'growth' if growth > 0 else 'decline'} trend. Historical total: **{curr_sym}{insights.get('hist_total', 0):,.2f}** | Forecast: **{curr_sym}{insights.get('forecast_total', 0):,.2f}**"
-                            
-                            elif any(word in query_lower for word in ['highest', 'maximum', 'peak', 'max']):
-                                fallback_msg = f"Peak performance for **{project_name}**: Historical high of **{curr_sym}{insights.get('hist_max', 0):,.2f}** | Projected high of **{curr_sym}{insights.get('forecast_max', 0):,.2f}**"
-                            
-                            elif any(word in query_lower for word in ['lowest', 'minimum', 'min']):
-                                fallback_msg = f"Lowest points for **{project_name}**: Historical low of **{curr_sym}{insights.get('hist_min', 0):,.2f}** | Projected low of **{curr_sym}{insights.get('forecast_min', 0):,.2f}**"
-                            
-                            else:
-                                fallback_msg = f"""I'm experiencing connectivity issues, but here's a summary for **{project_name}**:
-
-📊 **Historical:** Total: {curr_sym}{insights.get('hist_total', 0):,.2f} | Avg: {curr_sym}{insights.get('hist_avg', 0):,.2f}
-📈 **Forecast ({horizon} {freq_label.lower()}s):** Total: {curr_sym}{insights.get('forecast_total', 0):,.2f} | Avg: {curr_sym}{insights.get('forecast_avg', 0):,.2f}
-💹 **Growth:** {insights.get('growth_rate', 0):+.2f}%
-
-Try asking: "What's the sum of monthly sales?" or "Show me the monthly breakdown"."""
-                            
-                            st.session_state.messages.append({"role": "assistant", "content": fallback_msg})
-                            st.warning(f"⚠️ AI temporarily unavailable. Showing direct data response.")
-                            st.session_state.last_ai_call = time.time()
-                            st.rerun()
+                        # Show specific error to user
+                        if "429" in error_msg or "quota" in error_msg:
+                            st.error("⚠️ API rate limit reached. Please wait 30 seconds and try again.")
+                        elif "API key" in error_msg:
+                            st.error("❌ Invalid API key. Please check your GOOGLE_API_KEY in Streamlit Secrets.")
                         else:
-                            # Show retry progress
-                            if "429" in error_msg or "quota" in error_msg or "rate" in error_msg:
-                                st.warning(f"⏳ Rate limit reached. Retrying in {2 ** retry_count} seconds...")
-                            elif "timeout" in error_msg:
-                                st.warning(f"⏳ Request timeout. Retrying...")
-                            else:
-                                st.warning(f"⏳ Connection issue. Retrying...")
+                            st.error(f"❌ AI Error: {error_msg[:200]}")
+                        
+                        st.session_state.last_call = time.time()
     
     elif st.session_state.get('analyzed') and not ai_model:
-        st.error("❌ AI Engine unavailable. Please check your GOOGLE_API_KEY in Streamlit Secrets.")
-        st.info("💡 Go to: Settings → Secrets → Add GOOGLE_API_KEY")
+        st.error("❌ AI Engine unavailable")
+        st.info("**Setup Instructions:**\n1. Get API key from https://makersuite.google.com/app/apikey\n2. Add to Streamlit Cloud: Settings → Secrets\n3. Format: `GOOGLE_API_KEY = \"your-key-here\"`")
     else: 
-        st.info("📊 Upload data and click 'Process Intelligence' to unlock AI chat.")
+        st.info("📊 Upload data and click **Process Intelligence** to start chatting")
     
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -472,6 +374,8 @@ if st.session_state.get('analyzed'):
     model = st.session_state['model']
     horizon = st.session_state.get('horizon', 12)
     freq_label = st.session_state.get('freq_label', 'Monthly')
+    curr_sym = st.session_state.get('curr_sym', '$')
+    project_name = st.session_state.get('project_name', 'Your Project')
     
     future_only = fcst.tail(horizon)
     perf = fcst.set_index('ds')[['yhat_lower', 'yhat_upper']].join(hist.set_index('ds'))
@@ -481,8 +385,11 @@ if st.session_state.get('analyzed'):
     fig = go.Figure()
 
     if view == "Forecast":
-        fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat'], mode='lines+markers+text', text=[f"{curr_sym}{v:,.0f}" for v in future_only['yhat']], textposition="top center", line=dict(color='#00B0F6', width=5), name="Prediction"))
-        fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat_lower'], fill='tonexty', fillcolor='rgba(0,176,246,0.1)', line=dict(width=0), name="Confidence Interval"))
+        fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat'], mode='lines+markers+text', 
+                                text=[f"{curr_sym}{v:,.0f}" for v in future_only['yhat']], 
+                                textposition="top center", line=dict(color='#00B0F6', width=5), name="Prediction"))
+        fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat_lower'], fill='tonexty', 
+                                fillcolor='rgba(0,176,246,0.1)', line=dict(width=0), name="Confidence Interval"))
     
     elif view == "Anomalies":
         a1, a2, a3 = st.columns(3)
@@ -490,32 +397,39 @@ if st.session_state.get('analyzed'):
         a2.metric("Highest Spike", f"{curr_sym}{hist['y'].max():,.2f}")
         a3.metric("Lowest Dip", f"{curr_sym}{hist['y'].min():,.2f}")
         fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Historical Data', line=dict(width=4)))
-        fig.add_trace(go.Scatter(x=anoms.index, y=anoms['y'], mode='markers', marker=dict(color='red', size=15, symbol='x'), name='Anomalous Point'))
+        fig.add_trace(go.Scatter(x=anoms.index, y=anoms['y'], mode='markers', 
+                                marker=dict(color='red', size=15, symbol='x'), name='Anomalous Point'))
     
     elif view == "Accuracy":
         hist_preds = fcst[fcst['ds'].isin(hist['ds'])]
         hist['ma'] = hist['y'].rolling(window=ma_window).mean()
         fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Actual', opacity=0.4))
         fig.add_trace(go.Scatter(x=hist['ds'], y=hist['ma'], name='Trend', line=dict(color='#00FFCC', width=5)))
-        fig.add_trace(go.Scatter(x=hist_preds['ds'], y=hist_preds['yhat'], name='AI Backtest', line=dict(dash='dot', color='#00B0F6', width=4)))
+        fig.add_trace(go.Scatter(x=hist_preds['ds'], y=hist_preds['yhat'], name='AI Backtest', 
+                                line=dict(dash='dot', color='#00B0F6', width=4)))
     
     elif view == "Monthly":
         monthly = hist.set_index('ds').resample('MS')['y'].sum().reset_index()
-        fig.add_trace(go.Bar(x=monthly['ds'], y=monthly['y'], text=[f"{curr_sym}{v:,.0f}" for v in monthly['y']], textposition='auto', marker_color="#636EFA"))
+        fig.add_trace(go.Bar(x=monthly['ds'], y=monthly['y'], 
+                            text=[f"{curr_sym}{v:,.0f}" for v in monthly['y']], 
+                            textposition='auto', marker_color="#636EFA"))
     
     elif view == "Weekly":
         sample_week = pd.DataFrame({'ds': pd.date_range('2024-01-01', periods=7)})
         weekly_comp = model.predict(sample_week)[['ds', 'weekly']]
-        fig.add_trace(go.Bar(x=['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], y=weekly_comp['weekly'], marker_color='#00FFCC'))
+        fig.add_trace(go.Bar(x=['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], 
+                            y=weekly_comp['weekly'], marker_color='#00FFCC'))
     
     elif view == "Annual":
         yearly = hist.set_index('ds').resample('YS')['y'].sum().reset_index()
-        fig.add_trace(go.Scatter(x=yearly['ds'], y=yearly['y'], mode='lines+markers+text', text=[f"{curr_sym}{v:,.0f}" for v in yearly['y']], textposition="top left", line=dict(color="#EF553B", width=6)))
+        fig.add_trace(go.Scatter(x=yearly['ds'], y=yearly['y'], mode='lines+markers+text', 
+                                text=[f"{curr_sym}{v:,.0f}" for v in yearly['y']], 
+                                textposition="top left", line=dict(color="#EF553B", width=6)))
 
     fig.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='#0e1117', height=450)
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- EXECUTIVE SUMMARY ---
+    # Executive Summary
     start_val, end_val = future_only['yhat'].iloc[0], future_only['yhat'].iloc[-1]
     growth_rate = ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0
     total_vol = future_only['yhat'].sum()
@@ -528,7 +442,7 @@ if st.session_state.get('analyzed'):
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 7. FOOTER & FEEDBACK SYSTEM
+# 7. FOOTER & FEEDBACK
 # =================================================================
 st.divider()
 f_left, f_right = st.columns(2)
@@ -547,6 +461,7 @@ with f_right:
                 try:
                     supabase.table("feedback").insert({"email": email_in, "message": msg_in}).execute()
                     st.success("Ticket submitted.")
-                except: st.error("Database submission failed.")
+                except: 
+                    st.error("Database submission failed.")
 
 st.markdown(f'<div class="support-bar">💖 <b>Empower Hope Tech:</b> <a href="https://selar.com/showlove/hopetech" target="_blank" style="color: #0e1117; text-decoration: underline;">Click to Tip/Donate</a></div>', unsafe_allow_html=True)
