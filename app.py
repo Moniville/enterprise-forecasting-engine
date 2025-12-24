@@ -273,6 +273,7 @@ with col_left:
                     # Calculate insights
                     insights = calculate_insights(working_df, f_data, horizon, curr_sym)
                     
+                    # Save to session state for use in AI chat
                     st.session_state.update({
                         'forecast': f_data, 
                         'model': f_model, 
@@ -280,7 +281,9 @@ with col_left:
                         'analyzed': True, 
                         'horizon': horizon, 
                         'freq_label': freq_label,
-                        'insights': insights
+                        'insights': insights,
+                        'project_name': project_name,
+                        'curr_sym': curr_sym
                     })
             except Exception as e: st.error(f"Computation Error: {e}")
 
@@ -299,7 +302,7 @@ with col_right:
 
     if st.session_state.get('analyzed') and ai_model:
         if query := st.chat_input("Ask about your projections..."):
-            # Check cooldown (prevent spam - 2 seconds between requests)
+            # Cooldown to prevent spam
             current_time = time.time()
             if current_time - st.session_state.last_ai_call < 2:
                 st.warning("⏳ Please wait a moment before sending another message.")
@@ -308,24 +311,19 @@ with col_right:
                 with st.chat_message("user"): 
                     st.markdown(query)
 
-                # Get data from session state
+                # Retrieve data for context
                 hist_data = st.session_state['history']
                 forecast_data = st.session_state['forecast']
                 horizon = st.session_state.get('horizon', 12)
                 freq_label = st.session_state.get('freq_label', 'Monthly')
                 insights = st.session_state.get('insights', {})
-                
-                # Build detailed context for AI with all insights
-                monthly_details = "\n".join([f"  - {month}: {curr_sym}{safe_format_number(value):,.2f}" 
-                                            for month, value in insights.get('monthly_breakdown', {}).items()])
-                
-                weekly_details = "\n".join([f"  - {week}: {curr_sym}{safe_format_number(value):,.2f}" 
-                                           for week, value in list(insights.get('weekly_breakdown', {}).items())[:10]])
-                
-                # Build the custom prompt with detailed data summaries and instructions
+                project_name = st.session_state.get('project_name', 'Your Project')
+                curr_sym = st.session_state.get('curr_sym', '$')
+
+                # Build detailed prompt for AI
                 def build_prompt(insights, project_name, brand_name, project_full_name, curr_sym, user_query):
                     monthly_details = "\n".join([f"  - {month}: {curr_sym}{safe_format_number(value):,.2f}" 
-                                                   for month, value in insights.get('monthly_breakdown', {}).items()])
+                                                    for month, value in insights.get('monthly_breakdown', {}).items()])
                     weekly_details = "\n".join([f"  - {week}: {curr_sym}{safe_format_number(value):,.2f}" 
                                                  for week, value in list(insights.get('weekly_breakdown', {}).items())[:10]])
                     prompt = f"""
@@ -367,7 +365,7 @@ INSTRUCTIONS:
 
                 prompt_text = build_prompt(insights, project_name, BRAND_NAME, project_name, curr_sym, query)
 
-                # Retry logic with exponential backoff
+                # Retry logic with exponential backoff for API call
                 max_retries = 3
                 retry_count = 0
                 success = False
@@ -379,10 +377,10 @@ INSTRUCTIONS:
                             with st.spinner(f"Retrying AI connection... (Attempt {retry_count + 1}/{max_retries})"):
                                 time.sleep(wait_time)
                         
-                        # Make API call
+                        # Call the API
                         response = ai_model.generate_content(prompt_text)
                         
-                        # Extract response text
+                        # Parse response
                         if hasattr(response, 'text'):
                             ai_text = response.text
                         elif hasattr(response, 'parts'):
@@ -398,11 +396,10 @@ INSTRUCTIONS:
                     except Exception as e:
                         retry_count += 1
                         error_msg = str(e).lower()
-                        
+                        # Handle errors and fallback responses
                         if retry_count >= max_retries:
-                            # Fallback responses based on query
+                            # Based on the query, provide some fallback info
                             query_lower = query.lower()
-                            
                             if 'monthly' in query_lower or 'month' in query_lower:
                                 if 'sum' in query_lower or 'total' in query_lower:
                                     monthly_list = "\n".join([f"- **{month}**: {curr_sym}{safe_format_number(value):,.2f}" 
@@ -483,50 +480,62 @@ Try asking: "What's the sum of monthly sales?" or "Show me the monthly breakdown
 # 6. VISUALIZATION DASHBOARD
 # =================================================================
 if st.session_state.get('analyzed'):
+    # Retrieve dataframes and insights
     hist = st.session_state['history']
     fcst = st.session_state['forecast']
     model = st.session_state['model']
     horizon = st.session_state.get('horizon', 12)
     freq_label = st.session_state.get('freq_label', 'Monthly')
-    
+    project_name = st.session_state.get('project_name', 'Your Project')
+    curr_sym = st.session_state.get('curr_sym', '$')
+
+    # Generate forecast plot
     future_only = fcst.tail(horizon)
     perf = fcst.set_index('ds')[['yhat_lower', 'yhat_upper']].join(hist.set_index('ds'))
     anoms = perf[(perf['y'] > perf['yhat_upper']) | (perf['y'] < perf['yhat_lower'])]
-    
+
     view = st.radio("Dashboard Perspective:", ["Forecast", "Anomalies", "Accuracy", "Monthly", "Weekly", "Annual"], horizontal=True)
     fig = go.Figure()
 
     if view == "Forecast":
-        fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat'], mode='lines+markers+text', text=[f"{curr_sym}{v:,.0f}" for v in future_only['yhat']], textposition="top center", line=dict(color='#00B0F6', width=5), name="Prediction"))
-        fig.add_trace(go.Scatter(x=future_only['ds'], y=future_only['yhat_lower'], fill='tonexty', fillcolor='rgba(0,176,246,0.1)', line=dict(width=0), name="Confidence Interval"))
-    
+        fig.add_trace(go.Scatter(
+            x=future_only['ds'], y=future_only['yhat'], mode='lines+markers+text',
+            text=[f"{curr_sym}{v:,.0f}" for v in future_only['yhat']],
+            textposition="top center", line=dict(color='#00B0F6', width=5), name="Prediction"))
+        fig.add_trace(go.Scatter(
+            x=future_only['ds'], y=future_only['yhat_lower'], fill='tonexty', fillcolor='rgba(0,176,246,0.1)',
+            line=dict(width=0), name="Confidence Interval"))
+
     elif view == "Anomalies":
         a1, a2, a3 = st.columns(3)
         a1.metric("Irregularities Found", len(anoms))
         a2.metric("Highest Spike", f"{curr_sym}{hist['y'].max():,.2f}")
         a3.metric("Lowest Dip", f"{curr_sym}{hist['y'].min():,.2f}")
         fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Historical Data', line=dict(width=4)))
-        fig.add_trace(go.Scatter(x=anoms.index, y=anoms['y'], mode='markers', marker=dict(color='red', size=15, symbol='x'), name='Anomalous Point'))
-    
+        fig.add_trace(go.Scatter(x=anoms.index, y=anoms['y'], mode='markers',
+                                 marker=dict(color='red', size=15, symbol='x'), name='Anomalous Point'))
+
     elif view == "Accuracy":
         hist_preds = fcst[fcst['ds'].isin(hist['ds'])]
         hist['ma'] = hist['y'].rolling(window=ma_window).mean()
         fig.add_trace(go.Scatter(x=hist['ds'], y=hist['y'], name='Actual', opacity=0.4))
         fig.add_trace(go.Scatter(x=hist['ds'], y=hist['ma'], name='Trend', line=dict(color='#00FFCC', width=5)))
         fig.add_trace(go.Scatter(x=hist_preds['ds'], y=hist_preds['yhat'], name='AI Backtest', line=dict(dash='dot', color='#00B0F6', width=4)))
-    
+
     elif view == "Monthly":
         monthly = hist.set_index('ds').resample('MS')['y'].sum().reset_index()
         fig.add_trace(go.Bar(x=monthly['ds'], y=monthly['y'], text=[f"{curr_sym}{v:,.0f}" for v in monthly['y']], textposition='auto', marker_color="#636EFA"))
-    
+
     elif view == "Weekly":
         sample_week = pd.DataFrame({'ds': pd.date_range('2024-01-01', periods=7)})
         weekly_comp = model.predict(sample_week)[['ds', 'weekly']]
         fig.add_trace(go.Bar(x=['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], y=weekly_comp['weekly'], marker_color='#00FFCC'))
-    
+
     elif view == "Annual":
         yearly = hist.set_index('ds').resample('YS')['y'].sum().reset_index()
-        fig.add_trace(go.Scatter(x=yearly['ds'], y=yearly['y'], mode='lines+markers+text', text=[f"{curr_sym}{v:,.0f}" for v in yearly['y']], textposition="top left", line=dict(color="#EF553B", width=6)))
+        fig.add_trace(go.Scatter(x=yearly['ds'], y=yearly['y'], mode='lines+markers+text',
+                                 text=[f"{curr_sym}{v:,.0f}" for v in yearly['y']],
+                                 textposition="top left", line=dict(color="#EF553B", width=6)))
 
     fig.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='#0e1117', height=450)
     st.plotly_chart(fig, use_container_width=True)
@@ -535,14 +544,47 @@ if st.session_state.get('analyzed'):
     start_val, end_val = future_only['yhat'].iloc[0], future_only['yhat'].iloc[-1]
     growth_rate = ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0
     total_vol = future_only['yhat'].sum()
-    # Enhanced Executive Summary
-    st.markdown(f"""
-    <div class="interpretation-box">
-        <b>🔍 Executive Summary for {project_name}</b><br>
-        Over the next {horizon} {freq_label.lower()}s, the AI predicts a total volume of <b>{curr_sym}{total_vol:,.2f}</b>. 
-        We are seeing <b>{"upward momentum" if growth_rate > 0 else "a cooling period"}</b> with a projected movement of <b>{growth_rate:.1f}%</b>.
-    </div>
-    """, unsafe_allow_html=True)
+
+    # --- NEW: Download CSV and Report Buttons ---
+    # Prepare CSV data from historical dataframe
+    csv_buffer = None
+    if not hist.empty:
+        csv_buffer = hist.to_csv(index=False).encode('utf-8')
+    
+    # Prepare report text with insights
+    report_text = f"""
+    Project: {project_name}
+    Historical Total: {curr_sym}{safe_format_number(insights.get('hist_total',0)):.2f}
+    Forecast Total: {curr_sym}{safe_format_number(insights.get('forecast_total',0)):.2f}
+    Growth Rate: {insights.get('growth_rate',0):+.2f}%
+    """
+
+    report_bytes = report_text.encode('utf-8')
+
+    # Display download buttons
+    st.markdown("---")  # separator
+    st.subheader("Download Your Data & Report")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        # Download CSV button
+        st.download_button(
+            label="Download CSV",
+            data=csv_buffer,
+            file_name=f"{project_name}_data.csv",
+            mime="text/csv"
+        )
+    with col2:
+        # Download Report button
+        st.download_button(
+            label="Download Report",
+            data=report_bytes,
+            file_name=f"{project_name}_report.txt",
+            mime="text/plain"
+        )
+
+    # --- Continue with other sections if any ---
+    # (Optional: Additional summaries or visualizations)
 
 # =================================================================
 # 7. FOOTER & FEEDBACK SYSTEM
