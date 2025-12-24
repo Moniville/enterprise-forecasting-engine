@@ -322,7 +322,16 @@ with col_right:
                 weekly_details = "\n".join([f"  - {week}: {curr_sym}{safe_format_number(value):,.2f}" 
                                            for week, value in list(insights.get('weekly_breakdown', {}).items())[:10]])
                 
-                context = f"""You are an expert data analyst for {BRAND_NAME}, analyzing project: {project_name}.
+                # Build the custom prompt with detailed data summaries and instructions
+                def build_prompt(insights, project_name, brand_name, project_full_name, curr_sym, user_query):
+                    monthly_details = "\n".join([f"  - {month}: {curr_sym}{safe_format_number(value):,.2f}" 
+                                                   for month, value in insights.get('monthly_breakdown', {}).items()])
+                    weekly_details = "\n".join([f"  - {week}: {curr_sym}{safe_format_number(value):,.2f}" 
+                                                 for week, value in list(insights.get('weekly_breakdown', {}).items())[:10]])
+                    prompt = f"""
+You are an expert data analyst for {brand_name}. Your task is to interpret user questions based on the provided data summaries and insights.
+
+PROJECT: {project_full_name}
 
 HISTORICAL DATA SUMMARY:
 - Total Sales: {curr_sym}{safe_format_number(insights.get('hist_total', 0)):,.2f}
@@ -337,24 +346,26 @@ DETAILED MONTHLY BREAKDOWN:
 DETAILED WEEKLY BREAKDOWN (First 10 weeks):
 {weekly_details}
 
-FORECAST DATA ({horizon} {freq_label.lower()}s ahead):
+FORECAST DATA ({st.session_state.get('horizon', 12)} {st.session_state.get('freq_label', 'Monthly').lower()}s ahead):
 - Projected Total: {curr_sym}{safe_format_number(insights.get('forecast_total', 0)):,.2f}
 - Projected Average: {curr_sym}{safe_format_number(insights.get('forecast_avg', 0)):,.2f}
 - Projected Highest: {curr_sym}{safe_format_number(insights.get('forecast_max', 0)):,.2f}
 - Projected Lowest: {curr_sym}{safe_format_number(insights.get('forecast_min', 0)):,.2f}
 - Growth Rate: {insights.get('growth_rate', 0):+.2f}%
 
-User Question: {query}
+User Question: {user_query}
 
 INSTRUCTIONS:
-- Answer the user's question using the EXACT data provided above
-- If they ask about monthly sales, list out the specific months with their values
-- If they ask for sums or totals, calculate from the breakdown provided
-- Be specific with month names and values
-- Format currency as {curr_sym}X,XXX.XX
-- If the user asks about historical data, use the HISTORICAL section
-- If they ask about projections/forecasts, use the FORECAST section
-- Always be precise and cite specific numbers"""
+- Answer the user's question using the data summaries above.
+- Be specific with month names and values.
+- Format currency as {curr_sym}X,XXX.XX.
+- If the question relates to monthly, weekly, or historical data, refer to the above summaries.
+- If the question is complex or ambiguous, ask clarifying questions or give best-guess answers based on provided data.
+- Always cite specific numbers and avoid vague responses.
+"""
+                    return prompt
+
+                prompt_text = build_prompt(insights, project_name, BRAND_NAME, project_name, curr_sym, query)
 
                 # Retry logic with exponential backoff
                 max_retries = 3
@@ -369,7 +380,7 @@ INSTRUCTIONS:
                                 time.sleep(wait_time)
                         
                         # Make API call
-                        response = ai_model.generate_content(context)
+                        response = ai_model.generate_content(prompt_text)
                         
                         # Extract response text
                         if hasattr(response, 'text'):
@@ -389,10 +400,9 @@ INSTRUCTIONS:
                         error_msg = str(e).lower()
                         
                         if retry_count >= max_retries:
-                            # Provide fallback responses based on query
+                            # Fallback responses based on query
                             query_lower = query.lower()
                             
-                            # Handling specific queries
                             if 'monthly' in query_lower or 'month' in query_lower:
                                 if 'sum' in query_lower or 'total' in query_lower:
                                     monthly_list = "\n".join([f"- **{month}**: {curr_sym}{safe_format_number(value):,.2f}" 
@@ -467,7 +477,6 @@ Try asking: "What's the sum of monthly sales?" or "Show me the monthly breakdown
         st.info("💡 Go to: Settings → Secrets → Add GOOGLE_API_KEY")
     else: 
         st.info("📊 Upload data and click 'Process Intelligence' to unlock AI chat.")
-    
     st.markdown('</div>', unsafe_allow_html=True)
 
 # =================================================================
